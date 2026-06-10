@@ -1,0 +1,399 @@
+import AppKit
+import SwiftData
+import SwiftUI
+
+/// Root content of the bottom history panel: a centered search control +
+/// pinboard tab strip on top (with an overflow menu trailing), and a
+/// horizontal strip of clip cards below, newest first.
+@MainActor
+struct HistoryView: View {
+    @ObservedObject private var store: ClipStore
+    @ObservedObject private var syncStatus: CloudSyncStatus
+    private let onPaste: (ClipItem) -> Void
+    private let onClose: () -> Void
+
+    @Query(sort: \ClipItem.createdAt, order: .reverse) private var items: [ClipItem]
+    @Query(sort: [SortDescriptor(\Pinboard.sortOrder), SortDescriptor(\Pinboard.createdAt)])
+    private var pinboards: [Pinboard]
+
+    @AppStorage(AppConstants.capturePausedKey) private var isCapturePaused = false
+    @Environment(\.openSettings) private var openSettings
+    @State private var query = ""
+    @State private var isSearchExpanded = false
+    @State private var selectedTab: PanelTab = .history
+    @State private var selectedIndex = 0
+    @State private var isShowingClearConfirmation = false
+    @FocusState private var isSearchFocused: Bool
+    @FocusState private var isGridFocused: Bool
+
+    init(
+        store: ClipStore,
+        syncStatus: CloudSyncStatus,
+        onPaste: @escaping (ClipItem) -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        _store = ObservedObject(wrappedValue: store)
+        _syncStatus = ObservedObject(wrappedValue: syncStatus)
+        self.onPaste = onPaste
+        self.onClose = onClose
+    }
+
+    // MARK: - Filtering
+
+    /// History shows items on no pinboard; the relationship-nil filter is
+    /// done in memory because `#Predicate` nil-comparisons on relationships
+    /// have OS-version quirks (see ClipStore.fetchPrunable).
+    private var tabItems: [ClipItem] {
+        switch selectedTab {
+        case .history:
+            return items.filter { $0.pinboard == nil }
+        case .board(let id):
+            return items.filter { $0.pinboard?.persistentModelID == id }
+        }
+    }
+
+    private var visibleItems: [ClipItem] {
+        ClipSearch.filter(items: tabItems, query: query)
+    }
+
+    private var pinboardIDs: [PersistentIdentifier] {
+        pinboards.map(\.persistentModelID)
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(spacing: 0) {
+            topBar
+            Divider().opacity(0.35)
+            cardArea
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
+        .clipShape(UnevenRoundedRectangle(cornerRadii: RectangleCornerRadii(topLeading: 16, topTrailing: 16)))
+        .background(quickPasteShortcuts)
+        .onChange(of: query) { _, _ in selectedIndex = 0 }
+        .onChange(of: selectedTab) { _, _ in selectedIndex = 0 }
+        .onChange(of: visibleItems.count) { _, _ in clampSelection() }
+        .onChange(of: pinboardIDs) { _, _ in validateSelectedTab() }
+        .onAppear { focusGrid() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: Notification.Name("clipStoryPanelDidShow"))
+        ) { _ in resetForPresentation() }
+        .alert("Clear clipboard history?", isPresented: $isShowingClearConfirmation) {
+            Button("Clear History", role: .destructive) { store.clearUnpinned() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All clips that are not pinned and not on a pinboard will be removed. This cannot be undone.")
+        }
+    }
+
+    // MARK: - Top bar
+
+    private var topBar: some View {
+        ZStack {
+            HStack(spacing: 10) {
+                searchControl
+                PinboardTabStrip(pinboards: pinboards, selection: $selectedTab)
+            }
+            HStack(spacing: 10) {
+                syncChip
+                Spacer()
+                overflowMenu
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+    }
+
+    @ViewBuilder
+    private var searchControl: some View {
+        if isSearchExpanded {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.6))
+                TextField("Search", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .frame(width: 170)
+                    .focused($isSearchFocused)
+                    .onSubmit { _ = pasteSelected() }
+                    .onKeyPress(.escape) { collapseSearch(); return .handled }
+                    .onKeyPress(.leftArrow) { moveSelection(by: -1) }
+                    .onKeyPress(.rightArrow) { moveSelection(by: 1) }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(.white.opacity(0.1), in: Capsule())
+        } else {
+            Button { expandSearch(initialText: "") } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Search clips (or just start typing)")
+        }
+    }
+
+    @ViewBuilder
+    private var syncChip: some View {
+        if !syncStatus.state.isSyncing {
+            HStack(spacing: 5) {
+                Image(systemName: "icloud.slash").font(.system(size: 10.5))
+                Text(syncChipText).font(.system(size: 11))
+            }
+            .foregroundStyle(.white.opacity(0.6))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.white.opacity(0.08), in: Capsule())
+            .help(syncStatus.statusText)
+        }
+    }
+
+    private var syncChipText: String {
+        switch syncStatus.state {
+        case .syncing: return ""
+        case .noAccount: return "iCloud off"
+        case .localOnly: return "Local only"
+        case .ephemeral: return "Not saved"
+        }
+    }
+
+    /// Hidden buttons so ⌘1…⌘9 paste the Nth visible card even while the
+    /// search field has focus (keyboard shortcuts resolve window-wide).
+    private var quickPasteShortcuts: some View {
+        ForEach(1...9, id: \.self) { number in
+            Button("") { if visibleItems.indices.contains(number - 1) { onPaste(visibleItems[number - 1]) } }
+                .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Button(isCapturePaused ? "Resume Capture" : "Pause Capture") { isCapturePaused.toggle() }
+            Button("Clear History\u{2026}") { isShowingClearConfirmation = true }
+            Divider()
+            Button("Settings\u{2026}") {
+                onClose()
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+            }
+            Divider()
+            Button("Quit ClipStory") { NSApp.terminate(nil) }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More")
+    }
+
+    // MARK: - Cards
+
+    private var cardArea: some View {
+        Group {
+            if visibleItems.isEmpty {
+                emptyState
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 12) {
+                            ForEach(
+                                Array(visibleItems.enumerated()),
+                                id: \.element.persistentModelID
+                            ) { index, item in
+                                card(for: item, at: index)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                    }
+                    .onChange(of: selectedIndex) { _, newIndex in
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            proxy.scrollTo(newIndex)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .focusable()
+        .focusEffectDisabled()
+        .focused($isGridFocused)
+        .onKeyPress(.leftArrow) { moveSelection(by: -1) }
+        .onKeyPress(.rightArrow) { moveSelection(by: 1) }
+        .onKeyPress(.return) { pasteSelected() }
+        .onKeyPress(.escape) { handleEscape() }
+        .onKeyPress(phases: .down) { handleTyping($0) }
+    }
+
+    private func card(for item: ClipItem, at index: Int) -> some View {
+        ClipCardView(
+            item: item,
+            isSelected: index == selectedIndex,
+            quickPasteIndex: index < 9 ? index : nil
+        )
+        .id(index)
+        .onTapGesture(count: 2) {
+            selectedIndex = index
+            onPaste(item)
+        }
+        .onTapGesture {
+            selectedIndex = index
+        }
+        .contextMenu { contextMenu(for: item) }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for item: ClipItem) -> some View {
+        Button("Paste") { onPaste(item) }
+        Button("Copy") { PasteboardWriter.write(item: item) }
+        Divider()
+        Menu("Add to Pinboard") {
+            ForEach(pinboards, id: \.persistentModelID) { board in
+                Button(board.displayName) { store.assign(item, to: board) }
+                    .disabled(item.pinboard?.persistentModelID == board.persistentModelID)
+            }
+            if !pinboards.isEmpty {
+                Divider()
+            }
+            Button("New Pinboard\u{2026}") {
+                if let board = store.createPinboard(named: "Untitled") { store.assign(item, to: board) }
+            }
+        }
+        if item.pinboard != nil {
+            Button("Remove from Pinboard") { store.assign(item, to: nil) }
+        }
+        Divider()
+        Button("Delete", role: .destructive) { store.delete(item) }
+    }
+
+    // MARK: - Empty state
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: emptyContent.symbol)
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.white.opacity(0.25))
+            Text(emptyContent.title)
+                .font(.title3)
+                .foregroundStyle(.white.opacity(0.85))
+            Text(emptyContent.hint)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var selectedBoard: Pinboard? {
+        guard case .board(let id) = selectedTab else { return nil }
+        return pinboards.first { $0.persistentModelID == id }
+    }
+
+    private var emptyContent: (symbol: String, title: String, hint: String) {
+        if !query.isEmpty {
+            return ("magnifyingglass", "No clips match \u{201C}\(query)\u{201D}", "Try a different search.")
+        }
+        if let selectedBoard {
+            return ("square.grid.2x2", "\(selectedBoard.displayName) is empty",
+                    "Right-click any clip to add it here.")
+        }
+        return ("doc.on.clipboard", "Copy something to get started",
+                "Press \u{21E7}\u{2318}V anytime to open ClipStory.")
+    }
+
+    // MARK: - Search expansion & keyboard
+
+    private func expandSearch(initialText: String) {
+        isSearchExpanded = true
+        query = initialText
+        // The field only exists on the next render pass; focus it then.
+        DispatchQueue.main.async { isSearchFocused = true }
+    }
+
+    private func collapseSearch() {
+        query = ""
+        isSearchExpanded = false
+        isSearchFocused = false
+        focusGrid()
+    }
+
+    private func focusGrid() {
+        DispatchQueue.main.async { isGridFocused = true }
+    }
+
+    private func handleEscape() -> KeyPress.Result {
+        if isSearchExpanded { collapseSearch() } else { onClose() }
+        return .handled
+    }
+
+    private static let typingExcludedKeys: [KeyEquivalent] = [
+        .escape, .return, .tab, .space, .upArrow, .downArrow, .leftArrow, .rightArrow,
+        .delete, .deleteForward, .home, .end, .pageUp, .pageDown, .clear,
+    ]
+
+    /// Typing any printable character while browsing expands the search
+    /// field and seeds it with that character.
+    private func handleTyping(_ press: KeyPress) -> KeyPress.Result {
+        guard !isSearchExpanded else { return .ignored }
+        guard !press.modifiers.contains(.command), !press.modifiers.contains(.control) else {
+            return .ignored
+        }
+        guard !Self.typingExcludedKeys.contains(press.key) else { return .ignored }
+        let scalars = press.characters.unicodeScalars
+        let isPrintable = !scalars.isEmpty && !scalars.contains { scalar in
+            CharacterSet.controlCharacters.contains(scalar)
+                || (0xF700...0xF8FF).contains(scalar.value) // function-key range
+        }
+        guard isPrintable else { return .ignored }
+        expandSearch(initialText: press.characters)
+        return .handled
+    }
+
+    // MARK: - Selection
+
+    private func moveSelection(by delta: Int) -> KeyPress.Result {
+        let count = visibleItems.count
+        guard count > 0 else { return .ignored }
+        selectedIndex = min(max(selectedIndex + delta, 0), count - 1)
+        return .handled
+    }
+
+    private func pasteSelected() -> KeyPress.Result {
+        guard visibleItems.indices.contains(selectedIndex) else { return .ignored }
+        onPaste(visibleItems[selectedIndex])
+        return .handled
+    }
+
+    private func clampSelection() {
+        selectedIndex = max(0, min(selectedIndex, visibleItems.count - 1))
+    }
+
+    private func validateSelectedTab() {
+        if case .board(let id) = selectedTab, !pinboardIDs.contains(id) {
+            selectedTab = .history
+        }
+    }
+
+    private func resetForPresentation() {
+        query = ""
+        isSearchExpanded = false
+        isSearchFocused = false
+        selectedIndex = 0
+        validateSelectedTab()
+        focusGrid()
+    }
+}
