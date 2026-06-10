@@ -35,7 +35,7 @@ private final class HistoryPanel: NSPanel {
 /// opened, and collapses back into it when dismissed.
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private static let panelWidth: CGFloat = 1_000
+    private static let initialPanelWidth: CGFloat = 1_000
     private static let panelHeight: CGFloat = 324
     private static let cornerRadiusFull: CGFloat = 24
     private static let cornerRadiusNotch: CGFloat = 10
@@ -81,7 +81,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.store = store
         self.pasteService = pasteService
         self.panel = HistoryPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: Self.panelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: Self.initialPanelWidth, height: Self.panelHeight),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: true
@@ -303,8 +303,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func bloomRects(for geometry: NotchGeometry) -> BloomRects {
-        let width = Self.panelWidth
-        let height = Self.panelHeight
+        let size = panelSize(for: geometry)
+        let width = size.width
+        let height = size.height
         let full = CGRect(x: 0, y: 0, width: width, height: height)
         // In a non-flipped layer the origin is bottom-left, so the notch sits at
         // the top: high y, horizontally centered within the panel.
@@ -474,17 +475,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func panelFrame(for geometry: NotchGeometry) -> NSRect {
-        let width = Self.panelWidth
-        let height = Self.panelHeight
-        var originX = geometry.centerX - width / 2
-        // Keep the panel fully on its screen; left-align if it is wider than
-        // the screen (otherwise the standard clamp inverts and pushes the
-        // panel off the left edge on very narrow displays).
         let frame = geometry.screen.frame
-        let maxX = max(frame.minX, frame.maxX - width)
-        originX = min(max(originX, frame.minX), maxX)
-        let originY = geometry.topY - height
-        return NSRect(x: originX, y: originY, width: width, height: height)
+        let size = panelSize(for: geometry)
+        let originY = geometry.topY - size.height
+        return NSRect(x: frame.minX, y: originY, width: size.width, height: size.height)
+    }
+
+    private func panelSize(for geometry: NotchGeometry) -> CGSize {
+        CGSize(width: geometry.screen.frame.width, height: Self.panelHeight)
     }
 
     private func finishHide() {
