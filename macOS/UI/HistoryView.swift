@@ -69,8 +69,9 @@ struct HistoryView: View {
             cardArea
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
-        .clipShape(UnevenRoundedRectangle(cornerRadii: RectangleCornerRadii(topLeading: 16, topTrailing: 16)))
+        // The panel container paints the solid black notch backdrop and owns
+        // the rounded-bottom bloom shape; keep the content itself transparent.
+        .background(Color.clear)
         .background(quickPasteShortcuts)
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: selectedTab) { _, _ in selectedIndex = 0 }

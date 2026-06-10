@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftData
 import SwiftUI
 
@@ -28,17 +29,33 @@ private final class HistoryPanel: NSPanel {
     }
 }
 
-/// Owns the Paste-style bottom panel: full width of the screen with the mouse,
-/// anchored to the bottom edge, slide-up + fade animation.
+/// Owns the notch-bloom panel: a black, rounded-bottom panel anchored to the
+/// top-center of the display that grows out of the MacBook notch (or a
+/// synthetic top-center pill on displays without one) when the clipboard is
+/// opened, and collapses back into it when dismissed.
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private static let panelHeight: CGFloat = 340
-    private static let animationDuration: TimeInterval = 0.18
-    private static let slideDistance: CGFloat = 24
+    private static let panelWidth: CGFloat = 720
+    private static let panelHeight: CGFloat = 392
+    private static let cornerRadiusFull: CGFloat = 24
+    private static let cornerRadiusNotch: CGFloat = 10
+    private static let openDuration: CFTimeInterval = 0.26
+    private static let closeDuration: CFTimeInterval = 0.18
 
     private let panel: HistoryPanel
     private let store: ClipStore
     private let pasteService: PasteService
+
+    /// Black, rounded container the bloom mask is applied to.
+    private let containerView = NSView()
+    /// SwiftUI content; faded in after the black has bloomed open.
+    private var hostingView: NSView?
+    /// Opaque layer whose frame/cornerRadius animate to reveal the container.
+    private let maskLayer = CALayer()
+    /// Top inset that keeps the content clear of the physical notch; updated
+    /// per display when the panel is shown.
+    private var contentTopInset: NSLayoutConstraint?
+
     /// App that was frontmost when the panel was last shown; paste target.
     private var pasteTarget: NSRunningApplication?
     private var isHiding = false
@@ -52,7 +69,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.store = store
         self.pasteService = pasteService
         self.panel = HistoryPanel(
-            contentRect: .zero,
+            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: Self.panelHeight),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: true
@@ -84,18 +101,33 @@ final class PanelController: NSObject, NSWindowDelegate {
         // Collapse cross-device duplicates before the history becomes visible.
         store.dedupeSweep()
 
-        let finalFrame = targetFrame()
-        if !panel.isVisible {
-            panel.setFrame(finalFrame.offsetBy(dx: 0, dy: -Self.slideDistance), display: false)
-            panel.alphaValue = 0
-        }
+        guard let geometry = resolveGeometry() else { return }
+        panel.setFrame(panelFrame(for: geometry), display: false)
+
+        // Keep the content below the physical notch / menu bar; the top strip
+        // stays pure black so it blends into the notch.
+        contentTopInset?.constant = geometry.notchHeight
+        containerView.layoutSubtreeIfNeeded()
+
+        let bloom = bloomRects(for: geometry)
+        // Start collapsed inside the notch with the content hidden.
+        applyMask(rect: bloom.notch, cornerRadius: Self.cornerRadiusNotch, animated: false)
+        setContentVisible(false, animated: false)
+
         panel.makeKeyAndOrderFront(nil)
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
-            panel.animator().setFrame(finalFrame, display: true)
+        if reduceMotion {
+            applyMask(rect: bloom.full, cornerRadius: Self.cornerRadiusFull, animated: false)
+            setContentVisible(true, animated: true, duration: 0.16, delay: 0)
+        } else {
+            applyMask(
+                rect: bloom.full,
+                cornerRadius: Self.cornerRadiusFull,
+                animated: true,
+                duration: Self.openDuration,
+                timing: .easeOut
+            )
+            setContentVisible(true, animated: true, duration: 0.16, delay: Self.openDuration * 0.4)
         }
 
         DispatchQueue.main.async {
@@ -107,20 +139,25 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard panel.isVisible, !isHiding else { return }
         isHiding = true
 
-        let endFrame = panel.frame.offsetBy(dx: 0, dy: -Self.slideDistance)
-        NSAnimationContext.runAnimationGroup({ [weak self] context in
-            context.duration = Self.animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            self?.panel.animator().alphaValue = 0
-            self?.panel.animator().setFrame(endFrame, display: true)
-        }, completionHandler: { [weak self] in
-            // NSAnimationContext completions run on the main thread.
+        guard !reduceMotion, let geometry = resolveGeometry() else {
+            finishHide()
+            return
+        }
+
+        let bloom = bloomRects(for: geometry)
+        setContentVisible(false, animated: true, duration: 0.12, delay: 0)
+        applyMask(
+            rect: bloom.notch,
+            cornerRadius: Self.cornerRadiusNotch,
+            animated: true,
+            duration: Self.closeDuration,
+            timing: .easeIn
+        ) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.isHiding else { return }
-                self.isHiding = false
-                self.panel.orderOut(nil)
+                self.finishHide()
             }
-        })
+        }
     }
 
     // MARK: - NSWindowDelegate
@@ -132,13 +169,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - Setup
 
     private func configurePanel() {
-        panel.level = .statusBar
+        // Sit above the menu bar so the black panel visually merges with the
+        // hardware notch at the very top of the screen.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovable = false
         panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false // window shadow would frame the full rect; the mask owns the shape
         panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
@@ -157,50 +196,184 @@ final class PanelController: NSObject, NSWindowDelegate {
         let rootView = HistoryView(
             store: store,
             syncStatus: syncStatus,
-            onPaste: { [weak self] item in
-                self?.paste(item)
-            },
-            onClose: { [weak self] in
-                self?.hide()
-            }
+            onPaste: { [weak self] item in self?.paste(item) },
+            onClose: { [weak self] in self?.hide() }
         )
         .modelContainer(container)
         .environmentObject(store)
 
-        panel.contentView = NSHostingView(rootView: rootView)
+        let host = NSHostingView(rootView: rootView)
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.wantsLayer = true
+
+        containerView.wantsLayer = true
+        containerView.layer?.backgroundColor = NSColor.black.cgColor
+        containerView.layer?.masksToBounds = false
+        containerView.addSubview(host)
+        let topInset = host.topAnchor.constraint(equalTo: containerView.topAnchor)
+        contentTopInset = topInset
+        NSLayoutConstraint.activate([
+            host.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            topInset,
+            host.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+        ])
+
+        // Bottom corners are rounded; the top stays flush with the screen edge.
+        maskLayer.backgroundColor = NSColor.black.cgColor
+        maskLayer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        maskLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        containerView.layer?.mask = maskLayer
+
+        hostingView = host
+        panel.contentView = containerView
+    }
+
+    // MARK: - Bloom animation
+
+    private struct BloomRects {
+        let notch: CGRect
+        let full: CGRect
+    }
+
+    private func bloomRects(for geometry: NotchGeometry) -> BloomRects {
+        let width = Self.panelWidth
+        let height = Self.panelHeight
+        let full = CGRect(x: 0, y: 0, width: width, height: height)
+        // In a non-flipped layer the origin is bottom-left, so the notch sits at
+        // the top: high y, horizontally centered within the panel.
+        let notch = CGRect(
+            x: (width - geometry.notchWidth) / 2,
+            y: height - geometry.notchHeight,
+            width: geometry.notchWidth,
+            height: geometry.notchHeight
+        )
+        return BloomRects(notch: notch, full: full)
+    }
+
+    private func applyMask(
+        rect: CGRect,
+        cornerRadius: CGFloat,
+        animated: Bool,
+        duration: CFTimeInterval = 0,
+        timing: CAMediaTimingFunctionName = .easeOut,
+        completion: (() -> Void)? = nil
+    ) {
+        let newBounds = CGRect(origin: .zero, size: rect.size)
+        let newPosition = CGPoint(x: rect.midX, y: rect.midY)
+
+        guard animated else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            maskLayer.bounds = newBounds
+            maskLayer.position = newPosition
+            maskLayer.cornerRadius = cornerRadius
+            CATransaction.commit()
+            completion?()
+            return
+        }
+
+        let oldBounds = maskLayer.bounds
+        let oldPosition = maskLayer.position
+        let oldRadius = maskLayer.cornerRadius
+        let timingFunction = CAMediaTimingFunction(name: timing)
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock(completion)
+        CATransaction.setDisableActions(true)
+        maskLayer.bounds = newBounds
+        maskLayer.position = newPosition
+        maskLayer.cornerRadius = cornerRadius
+
+        maskLayer.add(basicAnimation("bounds", from: NSValue(rect: oldBounds), to: NSValue(rect: newBounds), duration: duration, timing: timingFunction), forKey: "bounds")
+        maskLayer.add(basicAnimation("position", from: NSValue(point: oldPosition), to: NSValue(point: newPosition), duration: duration, timing: timingFunction), forKey: "position")
+        maskLayer.add(basicAnimation("cornerRadius", from: oldRadius, to: cornerRadius, duration: duration, timing: timingFunction), forKey: "cornerRadius")
+        CATransaction.commit()
+    }
+
+    private func basicAnimation(
+        _ keyPath: String,
+        from: Any,
+        to: Any,
+        duration: CFTimeInterval,
+        timing: CAMediaTimingFunction
+    ) -> CABasicAnimation {
+        let animation = CABasicAnimation(keyPath: keyPath)
+        animation.fromValue = from
+        animation.toValue = to
+        animation.duration = duration
+        animation.timingFunction = timing
+        return animation
+    }
+
+    private func setContentVisible(
+        _ visible: Bool,
+        animated: Bool,
+        duration: CFTimeInterval = 0,
+        delay: CFTimeInterval = 0
+    ) {
+        guard let layer = hostingView?.layer else { return }
+        let target: Float = visible ? 1 : 0
+
+        guard animated else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.opacity = target
+            CATransaction.commit()
+            return
+        }
+
+        let from = layer.presentation()?.opacity ?? layer.opacity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.opacity = target
+        CATransaction.commit()
+
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = from
+        animation.toValue = target
+        animation.duration = duration
+        animation.beginTime = CACurrentMediaTime() + delay
+        animation.fillMode = .backwards
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(animation, forKey: "opacity")
     }
 
     // MARK: - Helpers
 
+    private var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private func resolveGeometry() -> NotchGeometry? {
+        let mouse = NSEvent.mouseLocation
+        let mouseScreen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+        return NotchGeometry.resolve(preferredScreen: mouseScreen)
+    }
+
+    private func panelFrame(for geometry: NotchGeometry) -> NSRect {
+        let width = Self.panelWidth
+        let height = Self.panelHeight
+        var originX = geometry.centerX - width / 2
+        // Keep the panel fully on its screen if the notch is near an edge.
+        let frame = geometry.screen.frame
+        originX = min(max(originX, frame.minX), frame.maxX - width)
+        let originY = geometry.topY - height
+        return NSRect(x: originX, y: originY, width: width, height: height)
+    }
+
+    private func finishHide() {
+        isHiding = false
+        panel.orderOut(nil)
+    }
+
     private func paste(_ item: ClipItem) {
         let target = pasteTarget
         isHiding = false
-        // Order out synchronously (no hide animation) so the panel has fully
+        // Order out synchronously (no animation) so the panel has fully
         // resigned key before the synthesized ⌘V fires — otherwise the paste
-        // lands in our own search field. The re-entrant windowDidResignKey ->
-        // hide() call is a no-op because `panel.isVisible` is already false
-        // after orderOut.
+        // lands in our own search field.
         panel.orderOut(nil)
         pasteService.paste(item: item, into: target)
-    }
-
-    /// Full width of the screen the mouse is on, anchored to the bottom of the
-    /// visible frame (above the Dock).
-    private func targetFrame() -> NSRect {
-        let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-            ?? NSScreen.main
-            ?? NSScreen.screens.first
-
-        guard let screen else {
-            return NSRect(x: 0, y: 0, width: 800, height: Self.panelHeight)
-        }
-        let visible = screen.visibleFrame
-        return NSRect(
-            x: visible.minX,
-            y: visible.minY,
-            width: visible.width,
-            height: Self.panelHeight
-        )
     }
 }
