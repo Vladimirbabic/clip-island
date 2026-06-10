@@ -107,7 +107,7 @@ final class ClipStore: ObservableObject {
     /// Attaches an asynchronously generated preview image to a file clip.
     /// File paths can sync to iOS, but the underlying macOS file cannot, so
     /// image files need a compact persisted preview to render cross-device.
-    func updateFilePreview(contentHash: String, imageData: Data?) {
+    func updateFilePreview(contentHash: String, imageData: Data?, recognizedText: String? = nil) {
         guard let imageData, imageData.count <= AppConstants.maxImageByteCount else { return }
         do {
             var descriptor = FetchDescriptor<ClipItem>(
@@ -123,10 +123,78 @@ final class ClipStore: ObservableObject {
             else { return }
 
             item.imageData = imageData
+            if let recognizedText, !recognizedText.isEmpty, item.recognizedText == nil {
+                item.recognizedText = recognizedText
+            }
             try context.save()
         } catch {
             logger.error("Failed to update file preview: \(error)")
         }
+    }
+
+    func updateRecognizedText(for item: ClipItem, text: String?) {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return
+        }
+        item.recognizedText = text
+        save()
+    }
+
+    func updateRecognizedText(contentHash: String, text: String?) {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return
+        }
+        do {
+            var descriptor = FetchDescriptor<ClipItem>(
+                predicate: #Predicate { $0.contentHash == contentHash },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = 1
+            guard let item = try context.fetch(descriptor).first, !item.isDeleted else { return }
+            item.recognizedText = text
+            try context.save()
+        } catch {
+            logger.error("Failed to update recognized text: \(error)")
+        }
+    }
+
+    func rename(_ item: ClipItem, to title: String?) {
+        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        item.customTitle = trimmed.isEmpty ? nil : trimmed
+        item.isPinned = true
+        save()
+    }
+
+    func updateText(_ item: ClipItem, to text: String) {
+        guard item.kind == .text || item.kind == .url else { return }
+        item.text = text
+        item.customTitle = item.customTitle
+        item.isPinned = true
+        item.contentHash = editedContentHash(for: item)
+        save()
+    }
+
+    func updateImageData(_ item: ClipItem, imageData: Data, recognizedText: String? = nil) {
+        guard item.kind == .image || item.kind == .file || item.kind == .url else { return }
+        item.imageData = imageData
+        if let recognizedText, !recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            item.recognizedText = recognizedText
+        }
+        item.isPinned = true
+        item.contentHash = editedContentHash(for: item)
+        save()
+    }
+
+    private func editedContentHash(for item: ClipItem) -> String {
+        let hash = ContentHasher.hash(
+            kind: item.kind,
+            text: item.text,
+            imageData: item.imageData,
+            fileName: item.fileName,
+            fileData: item.fileData,
+            fileTypeIdentifier: item.fileTypeIdentifier
+        )
+        return "edited:\(item.dedupID.uuidString):\(hash)"
     }
 
     // MARK: - Pruning

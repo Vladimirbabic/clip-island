@@ -19,11 +19,23 @@ struct ClipDetailView: View {
     @State private var copyFeedbackDismissal: Task<Void, Never>?
     @State private var isShowingNewBoardAlert = false
     @State private var newBoardName = ""
+    @State private var isShowingRenameSheet = false
+    @State private var renameText = ""
+    @State private var isShowingTextEditSheet = false
+    @State private var editText = ""
 
     var body: some View {
         List {
             Section("Content") {
                 contentView
+            }
+            if let recognizedText = item.recognizedText,
+               !recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Section("Recognized Text") {
+                    Text(recognizedText)
+                        .font(.body)
+                        .textSelection(.enabled)
+                }
             }
             Section("Details") {
                 metadataRows
@@ -48,6 +60,8 @@ struct ClipDetailView: View {
 
                 pinboardMenu
 
+                editMenu
+
                 Button(role: .destructive) {
                     store.delete(item)
                     dismiss()
@@ -63,6 +77,16 @@ struct ClipDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The clip is saved to the new page.")
+        }
+        .sheet(isPresented: $isShowingRenameSheet) {
+            TextEditSheet(title: "Rename Clip", text: $renameText, actionTitle: "Save") {
+                store.rename(item, to: renameText)
+            }
+        }
+        .sheet(isPresented: $isShowingTextEditSheet) {
+            TextEditSheet(title: "Edit Text", text: $editText, actionTitle: "Save") {
+                store.updateText(item, to: editText)
+            }
         }
         .overlay(alignment: .bottom) {
             if let copyFeedback {
@@ -81,6 +105,35 @@ struct ClipDetailView: View {
             Image(systemName: item.pinboard?.iconName ?? "square.grid.2x2")
         }
         .accessibilityLabel("Page")
+    }
+
+    private var editMenu: some View {
+        Menu {
+            Button {
+                renameText = item.customTitle ?? item.preview
+                isShowingRenameSheet = true
+            } label: {
+                Label("Rename", systemImage: "text.cursor")
+            }
+            if item.kind == .text || item.kind == .url {
+                Button {
+                    editText = item.text ?? ""
+                    isShowingTextEditSheet = true
+                } label: {
+                    Label("Edit Text", systemImage: "square.and.pencil")
+                }
+            }
+            if item.imageData != nil {
+                Button {
+                    rotateImagePreview()
+                } label: {
+                    Label("Rotate Image", systemImage: "rotate.right")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("Edit")
     }
 
     // MARK: - Content
@@ -169,6 +222,9 @@ struct ClipDetailView: View {
         if let board = item.pinboard {
             LabeledContent("Page", value: board.displayName)
         }
+        if let title = item.customTitle, !title.isEmpty {
+            LabeledContent("Title", value: title)
+        }
         LabeledContent("Date", value: item.createdAt.formatted(date: .abbreviated, time: .shortened))
         if item.kind == .text, let text = item.text {
             LabeledContent("Characters", value: "\(text.count)")
@@ -194,5 +250,82 @@ struct ClipDetailView: View {
             return
         }
         store.assign(item, to: board)
+    }
+
+    private func rotateImagePreview() {
+        guard let imageData = item.imageData else { return }
+        let store = store
+        let contentHash = item.contentHash
+        Task.detached(priority: .userInitiated) {
+            guard let rotated = Self.rotatedPNGDataClockwise(from: imageData) else { return }
+            let recognizedText = ImageTextRecognizer.recognizedText(in: rotated)
+            await MainActor.run {
+                // Re-find by hash in case SwiftData refreshed the model while
+                // the pixel work was running.
+                if item.contentHash == contentHash {
+                    store.updateImageData(item, imageData: rotated, recognizedText: recognizedText)
+                }
+            }
+        }
+    }
+
+    private static func rotatedPNGDataClockwise(from data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let size = image.size
+        let rotatedSize = CGSize(width: size.height, height: size.width)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = image.scale
+        let renderer = UIGraphicsImageRenderer(size: rotatedSize, format: format)
+        let rotated = renderer.image { context in
+            context.cgContext.translateBy(x: rotatedSize.width / 2, y: rotatedSize.height / 2)
+            context.cgContext.rotate(by: .pi / 2)
+            image.draw(in: CGRect(
+                x: -size.width / 2,
+                y: -size.height / 2,
+                width: size.width,
+                height: size.height
+            ))
+        }
+        return rotated.pngData()
+    }
+}
+
+private struct TextEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    @Binding var text: String
+    let actionTitle: String
+    let onCommit: () -> Void
+
+    init(title: String, text: Binding<String>, actionTitle: String, onCommit: @escaping () -> Void) {
+        self.title = title
+        _text = text
+        self.actionTitle = actionTitle
+        self.onCommit = onCommit
+    }
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .background(Color.black)
+                .foregroundStyle(.white)
+                .padding()
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(actionTitle) {
+                            onCommit()
+                            dismiss()
+                        }
+                    }
+                }
+        }
+        .preferredColorScheme(.dark)
     }
 }

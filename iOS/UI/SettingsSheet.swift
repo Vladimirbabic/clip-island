@@ -20,6 +20,7 @@ struct SettingsSheet: View {
                 historySection
                 captureSection
                 syncSection
+                achievementsSection
                 dangerSection
             }
             .navigationTitle("Settings")
@@ -91,6 +92,16 @@ struct SettingsSheet: View {
             Label(syncStatus.statusText, systemImage: syncStatus.state.systemImageName)
                 .foregroundStyle(syncStatus.state.isSyncing ? Color.primary : Color.secondary)
             LabeledContent("Freshness", value: syncStatus.freshnessText)
+        }
+    }
+
+    private var achievementsSection: some View {
+        Section("Progress") {
+            NavigationLink {
+                AchievementsView()
+            } label: {
+                Label("Achievements", systemImage: "sparkles")
+            }
         }
     }
 

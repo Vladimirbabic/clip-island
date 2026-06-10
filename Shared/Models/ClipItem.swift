@@ -15,6 +15,12 @@ final class ClipItem {
     @Attribute(.externalStorage) var fileData: Data?
     var fileName: String?
     var fileTypeIdentifier: String?
+    /// User-facing override used when a clip is renamed. Optional/additive for
+    /// CloudKit migration safety.
+    var customTitle: String?
+    /// Text recognized locally from image/screenshot previews. Kept optional
+    /// so older records remain valid and clips without images stay compact.
+    var recognizedText: String?
     var sourceAppName: String?
     var sourceAppBundleID: String?
     var isPinned: Bool = false
@@ -37,6 +43,7 @@ final class ClipItem {
         self.fileData = content.fileData
         self.fileName = content.fileName
         self.fileTypeIdentifier = content.fileTypeIdentifier
+        self.recognizedText = content.recognizedText
         self.sourceAppName = content.sourceAppName
         self.sourceAppBundleID = content.sourceAppBundleID
         self.contentHash = content.contentHash
@@ -48,6 +55,9 @@ final class ClipItem {
 
     /// Short human-readable summary for list rows and previews.
     var preview: String {
+        if let customTitle, !customTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return customTitle
+        }
         switch kind {
         case .text, .url:
             let value = text ?? ""

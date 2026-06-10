@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import ServiceManagement
+import SwiftData
 import SwiftUI
 
 /// Content of the SwiftUI `Settings` scene. Reads `ClipStore` from the
@@ -10,6 +11,9 @@ struct SettingsView: View {
     @ObservedObject private var syncStatus: CloudSyncStatus
 
     @EnvironmentObject private var store: ClipStore
+    @Query(sort: \ClipItem.createdAt, order: .reverse) private var items: [ClipItem]
+    @Query(sort: [SortDescriptor(\Pinboard.sortOrder), SortDescriptor(\Pinboard.createdAt)])
+    private var pinboards: [Pinboard]
     @AppStorage(AppConstants.capturePausedKey) private var isCapturePaused = false
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var loginItemStatus = LaunchAtLogin.status
@@ -34,6 +38,7 @@ struct SettingsView: View {
             generalSection
             permissionsSection
             syncSection
+            achievementsSection
             dataSection
             aboutSection
         }
@@ -195,8 +200,23 @@ struct SettingsView: View {
 
     // MARK: - Data & About
 
+    private var achievementsSection: some View {
+        let achievements = AchievementCatalog.achievements(items: items, pinboards: pinboards)
+        let unlocked = achievements.filter(\.isUnlocked).count
+        return Section("Progress") {
+            LabeledContent("Achievements", value: "\(unlocked) / \(achievements.count)")
+            ForEach(achievements.prefix(4)) { achievement in
+                Label(achievement.title, systemImage: achievement.isUnlocked ? "checkmark.circle.fill" : "lock")
+                    .foregroundStyle(achievement.isUnlocked ? .primary : .secondary)
+            }
+        }
+    }
+
     private var dataSection: some View {
         Section("Data") {
+            Button("Export JSON\u{2026}") {
+                ClipExporter.exportJSON(items: items, pinboards: pinboards)
+            }
             Button("Clear Unsaved History\u{2026}", role: .destructive) {
                 isShowingClearConfirmation = true
             }

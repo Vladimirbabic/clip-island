@@ -30,49 +30,52 @@ new `/task` items unless the user explicitly asks to implement them now.
 
 ## Next
 
-- [ ] OCR for images and screenshots.
-  - Index recognized text into searchable metadata.
-  - Make screenshots findable from search.
-  - Unlock the future "Screenshot Sleuth" achievement from real OCR search.
-- [ ] Search filters.
-  - Filter by content type.
-  - Filter by source app.
-  - Filter by Page.
-  - Filter by date.
-  - Add "jump to history" behavior from search results.
-- [ ] Rich preview and editing.
-  - Space/Quick Look style preview on Mac.
-  - Better iOS detail page for text, links, images, and files.
-  - Rename clips.
-  - Edit text clips.
-  - Rotate image previews.
-  - Extract text from image previews after OCR lands.
-- [ ] Gamification layer.
-  - Achievements: First Rescue, Time Traveler, Page Builder, Prompt Library, Screenshot Sleuth, Cross-Device Relay, Keyboard Native, Clean Desk, Privacy Pro, AI Memory.
-  - Stats: clips rescued, oldest clip reused, searches used, most useful Page, Mac/iPhone relay wins, estimated time saved.
-  - UI: subtle unlock toast, iOS achievements screen, Mac Settings achievements section.
-  - Keep it productivity-focused; no loud popups during copy/paste.
+- [x] OCR for images and screenshots.
+  - [x] Index recognized text into searchable metadata.
+  - [x] Make screenshots findable from search.
+  - [x] Unlock Screenshot Sleuth from real OCR search.
+- [x] Search filters.
+  - [x] Filter by content type.
+  - [x] Filter by source app.
+  - [x] Filter by Page through the existing Page picker.
+  - [x] Filter by date.
+  - [x] Filter saved/pinned/OCR-backed clips.
+- [x] Rich preview and editing.
+  - [x] Preview action on Mac cards for text, links, images, and files.
+  - [x] Better iOS detail page with OCR text.
+  - [x] Rename clips.
+  - [x] Edit text clips.
+  - [x] Rotate image previews on iOS.
+  - [x] Extract text from image previews after OCR lands.
+- [x] Gamification layer.
+  - [x] Achievements: First Rescue, Time Traveler, Page Builder, Prompt Library, Screenshot Sleuth, Cross-Device Relay, Clean Desk, AI Memory.
+  - [x] Stats: clips, saved clips, Pages, searchable images.
+  - [x] UI: iOS achievements screen, Mac Settings achievements section.
+  - [x] Keep it productivity-focused; no loud popups during copy/paste.
 - [ ] iOS capture integrations.
-  - Share extension.
-  - Action extension.
-  - Shortcuts action.
-  - Optional keyboard extension.
+  - [ ] Share extension.
+  - [ ] Action extension.
+  - [x] Shortcuts actions for saving clipboard and creating notes.
+  - [ ] Optional keyboard extension.
 
 ## Later
 
-- [ ] Local MCP server for AI tools.
-  - Let Claude/Codex search clipboard history.
-  - Let AI organize clips into Pages.
-  - Keep local-only by default.
+- [x] Local MCP server for AI tools.
+  - [x] Let Claude/Codex search a local ClipStory JSON export.
+  - [ ] Let AI organize clips into Pages.
+  - [x] Keep local-only by default.
 - [ ] Shared Pages.
-  - Design data model before implementation.
-  - Do not treat current Pages as shared until sync reliability is strong.
+  - [x] Design data model before implementation.
+  - [x] Do not treat current Pages as shared until sync reliability is strong.
+  - [ ] Implement CloudKit Sharing or backend-backed sharing.
 - [ ] Team/collaboration features.
+  - [x] Document privacy and data-model constraints.
+  - [ ] Implement roles, invites, audit behavior, and shared storage.
 - [ ] Distribution work.
-  - TestFlight setup for iOS.
-  - macOS notarization.
-  - Release build workflow.
-  - Privacy copy and onboarding.
+  - [ ] TestFlight setup for iOS.
+  - [ ] macOS notarization.
+  - [x] Release build workflow.
+  - [x] Privacy copy and onboarding notes.
 
 ## Parked / Not Now
 
@@ -95,3 +98,10 @@ new `/task` items unless the user explicitly asks to implement them now.
 - [x] iOS cards moved closer to the macOS card style.
 - [x] iOS image thumbnails are clipped to fixed card preview bounds.
 - [x] Holding arrow keys repeats selected-card navigation on macOS.
+- [x] Local OCR makes screenshots and image-file previews searchable.
+- [x] Structured filters added on Mac and iOS.
+- [x] Clip rename/edit/preview actions added.
+- [x] iOS Shortcuts actions added.
+- [x] Achievements and stats added to iOS/Mac settings.
+- [x] Local MCP JSON export/search groundwork added.
+- [x] Distribution and shared-page design docs added.

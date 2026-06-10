@@ -21,11 +21,21 @@ struct HistoryView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var query = ""
     @State private var isSearchExpanded = false
+    @State private var selectedKindFilter: ClipKind?
+    @State private var selectedSourceFilter: String?
+    @State private var selectedDateFilter: ClipDateFilter = .any
+    @State private var savedOnlyFilter = false
+    @State private var pinnedOnlyFilter = false
+    @State private var recognizedTextOnlyFilter = false
     @State private var selectedTab: PanelTab = .history
     @State private var selectedIndex = 0
     @State private var wheelAccumulator: CGFloat = 0
     @State private var isShowingClearConfirmation = false
     @State private var isShowingManualNoteSheet = false
+    @State private var renamingItem: ClipItem?
+    @State private var renameText = ""
+    @State private var editingTextItem: ClipItem?
+    @State private var editText = ""
     @State private var manualAddErrorMessage = ""
     @State private var isShowingManualAddError = false
     @FocusState private var isSearchFocused: Bool
@@ -66,7 +76,26 @@ struct HistoryView: View {
     }
 
     private var visibleItems: [ClipItem] {
-        ClipSearch.filter(items: tabItems, query: query)
+        ClipSearch.filter(items: tabItems, query: query, filters: searchFilters)
+    }
+
+    private var searchFilters: ClipSearchFilters {
+        ClipSearchFilters(
+            kind: selectedKindFilter,
+            sourceAppName: selectedSourceFilter,
+            date: selectedDateFilter,
+            savedOnly: savedOnlyFilter,
+            pinnedOnly: pinnedOnlyFilter,
+            withRecognizedTextOnly: recognizedTextOnlyFilter
+        )
+    }
+
+    private var sourceAppNames: [String] {
+        Array(Set(items.compactMap { item in
+            let value = item.sourceAppName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value?.isEmpty == false ? value : nil
+        }))
+        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var visibleItemIDs: [PersistentIdentifier] {
@@ -91,6 +120,7 @@ struct HistoryView: View {
         .background(Color.clear)
         .background(quickPasteShortcuts)
         .onChange(of: query) { _, _ in selectedIndex = 0 }
+        .onChange(of: searchFilters) { _, _ in selectedIndex = 0 }
         .onChange(of: selectedTab) { _, _ in selectedIndex = 0 }
         .onChange(of: visibleItemIDs) { _, _ in clampSelection() }
         .onChange(of: pinboardIDs) { _, _ in validateSelectedTab() }
@@ -109,6 +139,20 @@ struct HistoryView: View {
                 addManualNote(text)
             }
         }
+        .sheet(isPresented: isRenameSheetPresented) {
+            ClipTextSheet(title: "Rename Clip", text: $renameText, actionTitle: "Save") {
+                guard let item = renamingItem else { return }
+                store.rename(item, to: renameText)
+                renamingItem = nil
+            }
+        }
+        .sheet(isPresented: isTextEditSheetPresented) {
+            ClipTextSheet(title: "Edit Text", text: $editText, actionTitle: "Save") {
+                guard let item = editingTextItem else { return }
+                store.updateText(item, to: editText)
+                editingTextItem = nil
+            }
+        }
         .alert("Could Not Add Item", isPresented: $isShowingManualAddError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -121,9 +165,10 @@ struct HistoryView: View {
     private var topBar: some View {
         HStack(spacing: 10) {
             syncChip
-                .frame(width: Self.topBarLeadingWidth, alignment: .leading)
+            .frame(width: Self.topBarLeadingWidth, alignment: .leading)
             HStack(spacing: 10) {
                 searchControl
+                filterControl
                 ScrollView(.horizontal, showsIndicators: false) {
                     PinboardTabStrip(pinboards: pinboards, selection: $selectedTab)
                         .fixedSize(horizontal: true, vertical: false)
@@ -174,6 +219,47 @@ struct HistoryView: View {
             .buttonStyle(.plain)
             .help("Search clips (or just start typing)")
         }
+    }
+
+    private var filterControl: some View {
+        Menu {
+            Picker("Kind", selection: kindFilterBinding) {
+                Text("Any Kind").tag(String?.none)
+                ForEach(ClipKind.allCases, id: \.rawValue) { kind in
+                    Text(kind.displayName).tag(Optional(kind.rawValue))
+                }
+            }
+            if !sourceAppNames.isEmpty {
+                Picker("Source", selection: $selectedSourceFilter) {
+                    Text("Any Source").tag(String?.none)
+                    ForEach(sourceAppNames, id: \.self) { source in
+                        Text(source).tag(Optional(source))
+                    }
+                }
+            }
+            Picker("Date", selection: $selectedDateFilter) {
+                ForEach(ClipDateFilter.allCases, id: \.rawValue) { filter in
+                    Text(filter.displayName).tag(filter)
+                }
+            }
+            Toggle("Saved Only", isOn: $savedOnlyFilter)
+            Toggle("Pinned Only", isOn: $pinnedOnlyFilter)
+            Toggle("OCR Text Only", isOn: $recognizedTextOnlyFilter)
+            if searchFilters.isActive {
+                Divider()
+                Button("Clear Filters") { clearFilters() }
+            }
+        } label: {
+            Image(systemName: searchFilters.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(searchFilters.isActive ? .blue : .white.opacity(0.65))
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Search filters")
     }
 
     @ViewBuilder
@@ -334,6 +420,19 @@ struct HistoryView: View {
     private func contextMenu(for item: ClipItem) -> some View {
         Button("Paste") { onPaste(item) }
         Button("Copy") { PasteboardWriter.write(item: item) }
+        if ClipPreviewOpener.canOpen(item) {
+            Button("Preview") { ClipPreviewOpener.open(item) }
+        }
+        Button("Rename\u{2026}") {
+            renameText = item.customTitle ?? item.preview
+            renamingItem = item
+        }
+        if item.kind == .text || item.kind == .url {
+            Button("Edit Text\u{2026}") {
+                editText = item.text ?? ""
+                editingTextItem = item
+            }
+        }
         Divider()
         Menu("Add to Page") {
             ForEach(pinboards, id: \.persistentModelID) { board in
@@ -406,6 +505,36 @@ struct HistoryView: View {
         isSearchExpanded = false
         isSearchFocused = false
         focusGrid()
+    }
+
+    private var kindFilterBinding: Binding<String?> {
+        Binding(
+            get: { selectedKindFilter?.rawValue },
+            set: { selectedKindFilter = $0.flatMap(ClipKind.init(rawValue:)) }
+        )
+    }
+
+    private var isRenameSheetPresented: Binding<Bool> {
+        Binding(
+            get: { renamingItem != nil },
+            set: { if !$0 { renamingItem = nil } }
+        )
+    }
+
+    private var isTextEditSheetPresented: Binding<Bool> {
+        Binding(
+            get: { editingTextItem != nil },
+            set: { if !$0 { editingTextItem = nil } }
+        )
+    }
+
+    private func clearFilters() {
+        selectedKindFilter = nil
+        selectedSourceFilter = nil
+        selectedDateFilter = .any
+        savedOnlyFilter = false
+        pinnedOnlyFilter = false
+        recognizedTextOnlyFilter = false
     }
 
     private func focusGrid() {
@@ -620,6 +749,40 @@ private struct ManualNoteSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(12)
+        }
+        .frame(width: 464)
+    }
+}
+
+private struct ClipTextSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    @Binding var text: String
+    let actionTitle: String
+    let onCommit: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+            TextEditor(text: $text)
+                .font(.body)
+                .frame(width: 440, height: 230)
+                .padding(12)
+            Divider()
+            HStack {
+                Button("Cancel") { dismiss() }
+                Spacer()
+                Button(actionTitle) {
+                    onCommit()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
             }
             .padding(12)
         }

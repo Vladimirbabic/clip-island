@@ -289,7 +289,9 @@ final class ClipboardMonitor {
         if pasteboardType == .png,
            rawImageData.count <= maxByteCount,
            Self.isPNGData(rawImageData) {
-            commitImageCapture(pending, pngData: rawImageData)
+            if let item = commitImageCapture(pending, pngData: rawImageData) {
+                scheduleOCRUpdate(contentHash: item.contentHash, imageData: rawImageData)
+            }
             return
         }
 
@@ -304,20 +306,27 @@ final class ClipboardMonitor {
                 logger.error("Dropping image clip: decode/encode failed or image exceeds size cap")
                 return
             }
+            let recognizedText = ImageTextRecognizer.recognizedText(in: pngData)
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                self?.commitImageCapture(pending, pngData: pngData)
+                self?.commitImageCapture(pending, pngData: pngData, recognizedText: recognizedText)
             }
         }
     }
 
-    private func commitImageCapture(_ pending: PendingImageCapture, pngData: Data) {
+    @discardableResult
+    private func commitImageCapture(
+        _ pending: PendingImageCapture,
+        pngData: Data,
+        recognizedText: String? = nil
+    ) -> ClipItem? {
         // Drop stale results: the pasteboard changed again while encoding.
-        guard lastChangeCount == pending.changeCount else { return }
-        insert(CapturedContent(
+        guard lastChangeCount == pending.changeCount else { return nil }
+        return insert(CapturedContent(
             kind: pending.kind,
             text: pending.text,
             imageData: pngData,
+            recognizedText: recognizedText,
             sourceAppName: pending.sourceAppName,
             sourceAppBundleID: pending.sourceAppBundleID
         ))
@@ -334,9 +343,25 @@ final class ClipboardMonitor {
                 logger.error("Dropping file preview: decode/encode failed or image exceeds size cap")
                 return
             }
+            let recognizedText = ImageTextRecognizer.recognizedText(in: pngData)
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                self?.store.updateFilePreview(contentHash: contentHash, imageData: pngData)
+                self?.store.updateFilePreview(
+                    contentHash: contentHash,
+                    imageData: pngData,
+                    recognizedText: recognizedText
+                )
+            }
+        }
+    }
+
+    private func scheduleOCRUpdate(contentHash: String, imageData: Data) {
+        let store = store
+        imageEncodeTask = Task.detached(priority: .utility) {
+            let recognizedText = ImageTextRecognizer.recognizedText(in: imageData)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                store.updateRecognizedText(contentHash: contentHash, text: recognizedText)
             }
         }
     }

@@ -16,6 +16,12 @@ struct HistoryListView: View {
 
     @State private var searchText = ""
     @State private var isSearchVisible = false
+    @State private var selectedKindFilter: ClipKind?
+    @State private var selectedSourceFilter: String?
+    @State private var selectedDateFilter: ClipDateFilter = .any
+    @State private var savedOnlyFilter = false
+    @State private var pinnedOnlyFilter = false
+    @State private var recognizedTextOnlyFilter = false
     @State private var selectedBoardID: PersistentIdentifier?
     @State private var isShowingClearConfirmation = false
     @State private var isShowingSettings = false
@@ -55,7 +61,26 @@ struct HistoryListView: View {
     }
 
     private var filteredItems: [ClipItem] {
-        ClipSearch.filter(items: scopedItems, query: searchText)
+        ClipSearch.filter(items: scopedItems, query: searchText, filters: searchFilters)
+    }
+
+    private var searchFilters: ClipSearchFilters {
+        ClipSearchFilters(
+            kind: selectedKindFilter,
+            sourceAppName: selectedSourceFilter,
+            date: selectedDateFilter,
+            savedOnly: savedOnlyFilter,
+            pinnedOnly: pinnedOnlyFilter,
+            withRecognizedTextOnly: recognizedTextOnlyFilter
+        )
+    }
+
+    private var sourceAppNames: [String] {
+        Array(Set(items.compactMap { item in
+            let value = item.sourceAppName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value?.isEmpty == false ? value : nil
+        }))
+        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var filteredItemIDs: [PersistentIdentifier] {
@@ -70,6 +95,9 @@ struct HistoryListView: View {
                     topBar
                     if isSearchVisible {
                         searchBar
+                        if searchFilters.isActive {
+                            activeFilterStrip
+                        }
                     }
                     content
                 }
@@ -196,6 +224,7 @@ struct HistoryListView: View {
                 }
                 .buttonStyle(.plain)
             }
+            filterMenu
         }
         .font(.body)
         .padding(.horizontal, 14)
@@ -205,6 +234,86 @@ struct HistoryListView: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 10)
         .onAppear { isSearchFocused = true }
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Picker("Kind", selection: kindFilterBinding) {
+                Text("Any Kind").tag(String?.none)
+                ForEach(ClipKind.allCases, id: \.rawValue) { kind in
+                    Text(kind.displayName).tag(Optional(kind.rawValue))
+                }
+            }
+            if !sourceAppNames.isEmpty {
+                Picker("Source", selection: $selectedSourceFilter) {
+                    Text("Any Source").tag(String?.none)
+                    ForEach(sourceAppNames, id: \.self) { source in
+                        Text(source).tag(Optional(source))
+                    }
+                }
+            }
+            Picker("Date", selection: $selectedDateFilter) {
+                ForEach(ClipDateFilter.allCases, id: \.rawValue) { filter in
+                    Text(filter.displayName).tag(filter)
+                }
+            }
+            Toggle("Saved Only", isOn: $savedOnlyFilter)
+            Toggle("Pinned Only", isOn: $pinnedOnlyFilter)
+            Toggle("OCR Text Only", isOn: $recognizedTextOnlyFilter)
+            if searchFilters.isActive {
+                Divider()
+                Button("Clear Filters") { clearFilters() }
+            }
+        } label: {
+            Image(systemName: searchFilters.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .foregroundStyle(searchFilters.isActive ? Color.accentColor : Color.white.opacity(0.55))
+        }
+        .accessibilityLabel("Search filters")
+    }
+
+    private var activeFilterStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if let selectedKindFilter {
+                    filterChip(selectedKindFilter.displayName) { self.selectedKindFilter = nil }
+                }
+                if let selectedSourceFilter {
+                    filterChip(selectedSourceFilter) { self.selectedSourceFilter = nil }
+                }
+                if selectedDateFilter != .any {
+                    filterChip(selectedDateFilter.displayName) { selectedDateFilter = .any }
+                }
+                if savedOnlyFilter {
+                    filterChip("Saved") { savedOnlyFilter = false }
+                }
+                if pinnedOnlyFilter {
+                    filterChip("Pinned") { pinnedOnlyFilter = false }
+                }
+                if recognizedTextOnlyFilter {
+                    filterChip("OCR") { recognizedTextOnlyFilter = false }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private func filterChip(_ title: String, clear: @escaping () -> Void) -> some View {
+        Button(action: clear) {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(.white.opacity(0.9))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.10), in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var overflowMenu: some View {
@@ -546,6 +655,22 @@ struct HistoryListView: View {
         )
     }
 
+    private var kindFilterBinding: Binding<String?> {
+        Binding(
+            get: { selectedKindFilter?.rawValue },
+            set: { selectedKindFilter = $0.flatMap(ClipKind.init(rawValue:)) }
+        )
+    }
+
+    private func clearFilters() {
+        selectedKindFilter = nil
+        selectedSourceFilter = nil
+        selectedDateFilter = .any
+        savedOnlyFilter = false
+        pinnedOnlyFilter = false
+        recognizedTextOnlyFilter = false
+    }
+
     private func toggleSelection(for item: ClipItem) {
         let id = item.persistentModelID
         if selectedItemIDs.contains(id) {
@@ -574,6 +699,7 @@ struct HistoryListView: View {
             showManualAddError("The clipboard is empty or its content could not be saved.")
             return
         }
+        scheduleOCRUpdate(for: item)
         if let selectedBoard {
             store.assign(item, to: selectedBoard)
         }
@@ -632,13 +758,26 @@ struct HistoryListView: View {
                 fileTypeIdentifier: type?.identifier ?? "public.data",
                 sourceAppName: "ClipStory"
             )
-            guard store.insertManual(content, to: selectedBoard) != nil else {
+            guard let item = store.insertManual(content, to: selectedBoard) else {
                 showManualAddError("The file could not be saved.")
                 return
             }
+            scheduleOCRUpdate(for: item)
             showSavedFeedback()
         } catch {
             showManualAddError(error.localizedDescription)
+        }
+    }
+
+    private func scheduleOCRUpdate(for item: ClipItem) {
+        guard let imageData = item.imageData else { return }
+        let contentHash = item.contentHash
+        let store = store
+        Task.detached(priority: .utility) {
+            let text = ImageTextRecognizer.recognizedText(in: imageData)
+            await MainActor.run {
+                store.updateRecognizedText(contentHash: contentHash, text: text)
+            }
         }
     }
 

@@ -113,6 +113,49 @@ final class ClipSearchTests: XCTestCase {
         XCTAssertFalse(ClipSearch.matches(item: item, query: "invoice"))
     }
 
+    @MainActor
+    func testCustomTitleAndRecognizedTextAreSearched() {
+        let item = insertItem(kind: .image, imageData: Data([0xFF]))
+        item.customTitle = "Error dialog"
+        item.recognizedText = "Organization permission missing"
+
+        XCTAssertTrue(ClipSearch.matches(item: item, query: "dialog"))
+        XCTAssertTrue(ClipSearch.matches(item: item, query: "permission"))
+        XCTAssertFalse(ClipSearch.matches(item: item, query: "invoice"))
+    }
+
+    @MainActor
+    func testStructuredFiltersLimitResults() {
+        let text = insertItem(text: "hello", sourceAppName: "Safari")
+        let image = insertItem(kind: .image, imageData: Data([0xFF]), sourceAppName: "Preview")
+        image.isPinned = true
+        image.recognizedText = "invoice total"
+
+        var filters = ClipSearchFilters(kind: .image)
+        XCTAssertEqual(
+            ClipSearch.filter(items: [text, image], query: "", filters: filters).map(\.persistentModelID),
+            [image.persistentModelID]
+        )
+
+        filters = ClipSearchFilters(sourceAppName: "Safari")
+        XCTAssertEqual(
+            ClipSearch.filter(items: [text, image], query: "", filters: filters).map(\.persistentModelID),
+            [text.persistentModelID]
+        )
+
+        filters = ClipSearchFilters(pinnedOnly: true)
+        XCTAssertEqual(
+            ClipSearch.filter(items: [text, image], query: "", filters: filters).map(\.persistentModelID),
+            [image.persistentModelID]
+        )
+
+        filters = ClipSearchFilters(withRecognizedTextOnly: true)
+        XCTAssertEqual(
+            ClipSearch.filter(items: [text, image], query: "", filters: filters).map(\.persistentModelID),
+            [image.persistentModelID]
+        )
+    }
+
     // MARK: - Exclusion
 
     @MainActor

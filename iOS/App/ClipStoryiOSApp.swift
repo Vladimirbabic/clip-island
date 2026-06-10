@@ -68,6 +68,14 @@ struct ClipStoryiOSApp: App {
         guard changeCount != lastImportedChangeCount else { return }
         lastImportedChangeCount = changeCount
         guard let content = ClipboardReader.readCurrentContent() else { return }
-        store.insert(content)
+        guard let item = store.insert(content), let imageData = item.imageData else { return }
+        let contentHash = item.contentHash
+        let store = store
+        Task.detached(priority: .utility) {
+            let text = ImageTextRecognizer.recognizedText(in: imageData)
+            await MainActor.run {
+                store.updateRecognizedText(contentHash: contentHash, text: text)
+            }
+        }
     }
 }

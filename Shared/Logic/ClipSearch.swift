@@ -10,8 +10,11 @@ enum ClipSearch {
         guard !tokens.isEmpty else { return true }
 
         let haystacks = [
+            item.customTitle,
             item.text,
             item.fileName,
+            item.linkTitle,
+            item.recognizedText,
             item.sourceAppName,
             item.kind.displayName,
         ].compactMap { $0 }
@@ -23,10 +26,30 @@ enum ClipSearch {
         }
     }
 
-    static func filter(items: [ClipItem], query: String) -> [ClipItem] {
+    static func filter(
+        items: [ClipItem],
+        query: String,
+        filters: ClipSearchFilters = .none,
+        now: Date = Date()
+    ) -> [ClipItem] {
         let tokens = tokens(from: query)
-        guard !tokens.isEmpty else { return items }
-        return items.filter { matches(item: $0, query: query) }
+        guard !tokens.isEmpty || filters.isActive else { return items }
+        return items.filter { item in
+            (tokens.isEmpty || matches(item: item, query: query))
+                && matches(item: item, filters: filters, now: now)
+        }
+    }
+
+    static func matches(item: ClipItem, filters: ClipSearchFilters, now: Date = Date()) -> Bool {
+        if let kind = filters.kind, item.kind != kind { return false }
+        if let source = filters.sourceAppName, item.sourceAppName != source { return false }
+        if filters.savedOnly, !(item.isPinned || item.pinboard != nil) { return false }
+        if filters.pinnedOnly, !item.isPinned { return false }
+        if filters.withRecognizedTextOnly {
+            let text = item.recognizedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if text.isEmpty { return false }
+        }
+        return filters.date.contains(item.createdAt, now: now)
     }
 
     private static func tokens(from query: String) -> [String] {

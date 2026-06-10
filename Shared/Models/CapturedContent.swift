@@ -9,6 +9,7 @@ struct CapturedContent: Sendable, Equatable {
     let fileData: Data?
     let fileName: String?
     let fileTypeIdentifier: String?
+    let recognizedText: String?
     let sourceAppName: String?
     let sourceAppBundleID: String?
 
@@ -19,6 +20,7 @@ struct CapturedContent: Sendable, Equatable {
         fileData: Data? = nil,
         fileName: String? = nil,
         fileTypeIdentifier: String? = nil,
+        recognizedText: String? = nil,
         sourceAppName: String? = nil,
         sourceAppBundleID: String? = nil
     ) {
@@ -28,6 +30,7 @@ struct CapturedContent: Sendable, Equatable {
         self.fileData = fileData
         self.fileName = fileName
         self.fileTypeIdentifier = fileTypeIdentifier
+        self.recognizedText = recognizedText
         self.sourceAppName = sourceAppName
         self.sourceAppBundleID = sourceAppBundleID
     }
