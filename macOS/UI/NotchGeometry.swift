@@ -19,13 +19,15 @@ struct NotchGeometry {
     /// Resolves the geometry to bloom from, preferring a real notch on any
     /// connected display, then the display under the mouse, then the main one.
     static func resolve(preferredScreen: NSScreen?) -> NotchGeometry? {
-        if let notched = NSScreen.screens.first(where: hasHardwareNotch),
-           let geometry = fromHardwareNotch(notched) {
-            return geometry
-        }
-
         guard let screen = preferredScreen ?? NSScreen.main ?? NSScreen.screens.first else {
             return nil
+        }
+        // Bloom from the real notch only when the user is on the built-in
+        // display; on any other screen (e.g. an external monitor on a docked
+        // laptop) synthesize a top-center pill so the panel appears where the
+        // cursor and active app actually are — not on the closed-away laptop.
+        if hasHardwareNotch(screen), let geometry = fromHardwareNotch(screen) {
+            return geometry
         }
         // Synthetic cutout: a pill the height of the menu bar, centered up top.
         let menuBarHeight = max(22, screen.frame.maxY - screen.visibleFrame.maxY)

@@ -123,6 +123,9 @@ struct HistoryView: View {
                     .onKeyPress(.escape) { collapseSearch(); return .handled }
                     .onKeyPress(.leftArrow) { moveSelection(by: -1) }
                     .onKeyPress(.rightArrow) { moveSelection(by: 1) }
+                    .onKeyPress(.upArrow) { switchTab(by: -1) }
+                    .onKeyPress(.downArrow) { switchTab(by: 1) }
+                    .onKeyPress(.tab) { switchTab(by: 1) }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
@@ -234,11 +237,7 @@ struct HistoryView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isGridFocused)
-        .onKeyPress(.leftArrow) { moveSelection(by: -1) }
-        .onKeyPress(.rightArrow) { moveSelection(by: 1) }
-        .onKeyPress(.return) { pasteSelected() }
-        .onKeyPress(.escape) { handleEscape() }
-        .onKeyPress(phases: .down) { handleTyping($0) }
+        .onKeyPress(phases: .down) { handleGridKey($0) }
     }
 
     private func card(for item: ClipItem, at index: Int) -> some View {
@@ -338,6 +337,40 @@ struct HistoryView: View {
 
     private func handleEscape() -> KeyPress.Result {
         if isSearchExpanded { collapseSearch() } else { onClose() }
+        return .handled
+    }
+
+    /// Single dispatcher for the card grid: Tab / Shift-Tab and Up/Down switch
+    /// the tab group up top, Left/Right move card selection, Return pastes the
+    /// selected clip, Escape closes, and any printable key opens search.
+    private func handleGridKey(_ press: KeyPress) -> KeyPress.Result {
+        switch press.key {
+        case .tab:
+            return switchTab(by: press.modifiers.contains(.shift) ? -1 : 1)
+        case .upArrow:
+            return switchTab(by: -1)
+        case .downArrow:
+            return switchTab(by: 1)
+        case .leftArrow:
+            return moveSelection(by: -1)
+        case .rightArrow:
+            return moveSelection(by: 1)
+        case .return:
+            return pasteSelected()
+        case .escape:
+            return handleEscape()
+        default:
+            return handleTyping(press)
+        }
+    }
+
+    /// Cycles the selected tab (Clipboard History + each pinboard) with wrap.
+    private func switchTab(by delta: Int) -> KeyPress.Result {
+        let tabs: [PanelTab] = [.history] + pinboards.map { PanelTab.board($0.persistentModelID) }
+        guard tabs.count > 1 else { return .handled }
+        let current = tabs.firstIndex(of: selectedTab) ?? 0
+        let next = ((current + delta) % tabs.count + tabs.count) % tabs.count
+        selectedTab = tabs[next]
         return .handled
     }
 

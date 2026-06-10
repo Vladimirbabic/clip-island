@@ -55,6 +55,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Top inset that keeps the content clear of the physical notch; updated
     /// per display when the panel is shown.
     private var contentTopInset: NSLayoutConstraint?
+    /// Geometry the panel opened with, reused on hide so the collapse matches
+    /// the exact notch/pill it bloomed from (even if the mouse moved screens).
+    private var activeGeometry: NotchGeometry?
 
     /// App that was frontmost when the panel was last shown; paste target.
     private var pasteTarget: NSRunningApplication?
@@ -102,7 +105,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         store.dedupeSweep()
 
         guard let geometry = resolveGeometry() else { return }
+        activeGeometry = geometry
         panel.setFrame(panelFrame(for: geometry), display: false)
+        // Render the rounded corners at native resolution on Retina displays.
+        maskLayer.contentsScale = geometry.screen.backingScaleFactor
 
         // Keep the content below the physical notch / menu bar; the top strip
         // stays pure black so it blends into the notch.
@@ -139,7 +145,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard panel.isVisible, !isHiding else { return }
         isHiding = true
 
-        guard !reduceMotion, let geometry = resolveGeometry() else {
+        guard !reduceMotion, let geometry = activeGeometry else {
             finishHide()
             return
         }
@@ -163,7 +169,20 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowDidResignKey(_ notification: Notification) {
-        hide()
+        // Test hook: `--keep-open` keeps the panel up when it loses key focus
+        // so UI tests can drive it with synthetic keystrokes. Never set in
+        // normal use.
+        if ProcessInfo.processInfo.arguments.contains("--keep-open") { return }
+        // A SwiftUI .alert (Clear History / Delete Pinboard) or a context menu
+        // presents its own key window; collapsing the panel then would yank it
+        // out from under them. Defer a tick and only dismiss when key truly
+        // left our app (no key window of ours remains).
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if NSApp.keyWindow == nil {
+                self.hide()
+            }
+        }
     }
 
     // MARK: - Setup
@@ -273,9 +292,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             return
         }
 
-        let oldBounds = maskLayer.bounds
-        let oldPosition = maskLayer.position
-        let oldRadius = maskLayer.cornerRadius
+        // Read from the presentation layer so interrupting a bloom mid-flight
+        // continues from where it visually is, rather than snapping.
+        let presentation = maskLayer.presentation()
+        let oldBounds = presentation?.bounds ?? maskLayer.bounds
+        let oldPosition = presentation?.position ?? maskLayer.position
+        let oldRadius = presentation?.cornerRadius ?? maskLayer.cornerRadius
         let timingFunction = CAMediaTimingFunction(name: timing)
 
         CATransaction.begin()
@@ -355,15 +377,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         let width = Self.panelWidth
         let height = Self.panelHeight
         var originX = geometry.centerX - width / 2
-        // Keep the panel fully on its screen if the notch is near an edge.
+        // Keep the panel fully on its screen; left-align if it is wider than
+        // the screen (otherwise the standard clamp inverts and pushes the
+        // panel off the left edge on very narrow displays).
         let frame = geometry.screen.frame
-        originX = min(max(originX, frame.minX), frame.maxX - width)
+        let maxX = max(frame.minX, frame.maxX - width)
+        originX = min(max(originX, frame.minX), maxX)
         let originY = geometry.topY - height
         return NSRect(x: originX, y: originY, width: width, height: height)
     }
 
     private func finishHide() {
         isHiding = false
+        activeGeometry = nil
         panel.orderOut(nil)
     }
 
