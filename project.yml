@@ -17,6 +17,11 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: 1.0.0
 
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.9.3
+
 targets:
   ClipStory:
     type: application
@@ -36,6 +41,9 @@ targets:
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
+        SUFeedURL: https://vladimirbabic.github.io/clip-island/appcast.xml
+        SUPublicEDKey: yD/iIqArwB8D0y+r2fl0MUoGkF6NY5sGmm4UqllEbLk=
+        SUEnableInstallerLauncherService: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vladbabic.clipstory
@@ -45,6 +53,8 @@ targets:
       configs:
         Release:
           ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - package: Sparkle
 
   ClipStory-iOS:
     type: application

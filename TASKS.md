@@ -79,9 +79,12 @@ new `/task` items unless the user explicitly asks to implement them now.
   - [ ] Choose v1 launch channel and business model.
   - [ ] Deploy CloudKit schema to production.
   - [ ] Create Developer ID certificate/profile for CloudKit macOS distribution.
-  - [ ] Add Sparkle 2 for direct-download macOS updates.
-  - [ ] Create Sparkle signing keys and keep the private key outside the repo.
-  - [ ] Publish a stable appcast URL; GitHub Releases can host DMG/ZIP assets.
+  - [x] Add Sparkle 2 for direct-download macOS updates.
+  - [x] Generate initial Sparkle signing key and commit only the public key.
+  - [x] Add initial appcast and appcast generation script.
+  - [ ] Enable GitHub Pages or custom-domain hosting for the appcast URL.
+  - [ ] Export/back up the Sparkle private key into secure secret storage.
+  - [ ] Publish release DMG/ZIP assets through GitHub Releases.
   - [ ] Decide ZIP vs DMG for the first public artifact.
   - [ ] Create support URL, privacy policy URL, and landing/download page.
   - [ ] Prepare App Store Connect metadata and screenshots.

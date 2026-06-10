@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import Sparkle
 import SwiftUI
 
 /// Ownership graph (kept deliberately flat):
@@ -22,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var linkMetadataService: LinkMetadataService?
     private var panelController: PanelController?
     private var hotKey: HotKey?
+    private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let environment = AppEnvironment.shared
@@ -40,6 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.pasteService = pasteService
         self.linkMetadataService = linkMetadataService
         self.panelController = panelController
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
 
         monitor.onItemCaptured = { [weak self] item in
             guard item.kind == .url else { return }
@@ -212,6 +219,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let updateItem = NSMenuItem(
+            title: "Check for Updates\u{2026}",
+            action: #selector(checkForUpdatesFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = self
+        menu.addItem(updateItem)
+
         let settingsItem = NSMenuItem(
             title: "Settings\u{2026}",
             action: #selector(openSettingsFromMenu),
@@ -248,6 +263,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettingsFromMenu() {
         panelController?.hide()
         SettingsOpener.open()
+    }
+
+    @objc private func checkForUpdatesFromMenu(_ sender: Any?) {
+        updaterController?.checkForUpdates(sender)
     }
 }
 

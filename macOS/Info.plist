@@ -26,5 +26,11 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://vladimirbabic.github.io/clip-island/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>yD/iIqArwB8D0y+r2fl0MUoGkF6NY5sGmm4UqllEbLk=</string>
 </dict>
 </plist>

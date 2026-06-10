@@ -23,6 +23,9 @@ the App Store discovery/update/payment channel enough to absorb the constraints.
 - Version: `1.0.0`, build `1`
 - Icons: shared AppIcon asset exists for macOS and iOS.
 - macOS Release hardened runtime is enabled for notarization.
+- Sparkle 2 is wired into the macOS app.
+- Sparkle appcast URL: `https://vladimirbabic.github.io/clip-island/appcast.xml`
+- Sparkle signing account: `com.vladbabic.clipstory`
 - CloudKit production schema still needs to be deployed and tested.
 - No StoreKit/paywall implementation exists yet.
 
@@ -51,7 +54,7 @@ Release artifact options:
 
 - ZIP is fastest for v1.
 - DMG looks more polished and can include a shortcut to `/Applications`.
-- Add Sparkle for in-app updates before broad public launch.
+- Sparkle is wired; keep the appcast reachable before broad public launch.
 
 ## macOS Updates
 
@@ -59,13 +62,13 @@ Use Sparkle 2 for direct-download macOS updates. GitHub Releases should host the
 DMG/ZIP artifacts, but the app should check a Sparkle appcast feed rather than
 scraping GitHub's latest-release API itself.
 
-Recommended v1 update architecture:
+Implemented update architecture:
 
-1. Add Sparkle 2 to the macOS target.
-2. Generate a Sparkle EdDSA key pair. Store the private key only in the release
-   keychain or CI secret storage; commit only the public key in app config.
-3. Add `SUFeedURL` to the macOS `Info.plist`, pointing to a stable HTTPS feed:
-   `https://<domain>/clipstory/appcast.xml`.
+1. Sparkle 2 is added to the macOS target through XcodeGen.
+2. The Sparkle EdDSA public key is committed in app config; the private key is
+   stored in the local login Keychain under account `com.vladbabic.clipstory`.
+3. `SUFeedURL` points at
+   `https://vladimirbabic.github.io/clip-island/appcast.xml`.
 4. Host release artifacts in GitHub Releases:
    `ClipStory-1.0.1.dmg` or `ClipStory-1.0.1.zip`.
 5. Host `appcast.xml` on a stable website or GitHub Pages. The appcast item
@@ -76,9 +79,25 @@ Recommended v1 update architecture:
    - Sign with Developer ID.
    - Notarize.
    - Package as DMG/ZIP.
-   - Generate/sign the Sparkle appcast.
+   - Move the ZIP/DMG into `build/sparkle/`.
+   - Generate/sign the Sparkle appcast with `./scripts/generate_appcast.sh`.
    - Upload the artifact to GitHub Releases.
    - Publish the appcast update after the asset is live.
+
+Back up the private Sparkle key once and store it in 1Password or CI secrets:
+
+```sh
+SPARKLE_GENERATE_KEYS="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+  -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys' \
+  -type f \
+  -print \
+  -quit)"
+"$SPARKLE_GENERATE_KEYS" \
+  --account com.vladbabic.clipstory \
+  -x ~/Desktop/sparkle_private_key_clipstory.txt
+```
+
+Do not commit the exported private key. Only `SUPublicEDKey` belongs in git.
 
 Why not just query GitHub Releases from the app:
 
@@ -158,9 +177,12 @@ release:
 - [ ] Create App Store Connect records for iOS.
 - [ ] Deploy CloudKit schema to production.
 - [ ] Create Developer ID certificate/profile for macOS CloudKit distribution.
-- [ ] Add Sparkle 2 for direct-download macOS updates.
-- [ ] Create Sparkle signing keys and store the private key outside the repo.
-- [ ] Publish a stable appcast URL; GitHub Releases can host DMG/ZIP assets.
+- [x] Add Sparkle 2 for direct-download macOS updates.
+- [x] Generate initial Sparkle signing key and commit only the public key.
+- [x] Add initial `docs/appcast.xml`.
+- [x] Add appcast generation script for GitHub Release assets.
+- [ ] Enable GitHub Pages or custom-domain hosting for the appcast URL.
+- [ ] Export/back up the Sparkle private key into secure secret storage.
 - [ ] Decide ZIP vs DMG for the first public artifact.
 - [ ] Produce and notarize a macOS ZIP or DMG.
 - [ ] Upload iOS build to TestFlight.

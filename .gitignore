@@ -18,3 +18,8 @@ DerivedData/
 
 # Secrets / local env
 .env*
+
+# Sparkle private signing keys
+sparkle_private_key*
+*.sparkle.key
+*.ed25519
