@@ -35,8 +35,8 @@ private final class HistoryPanel: NSPanel {
 /// opened, and collapses back into it when dismissed.
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private static let panelWidth: CGFloat = 880
-    private static let panelHeight: CGFloat = 348
+    private static let panelWidth: CGFloat = 1_000
+    private static let panelHeight: CGFloat = 324
     private static let cornerRadiusFull: CGFloat = 24
     private static let cornerRadiusNotch: CGFloat = 10
     private static let openDuration: CFTimeInterval = 0.26
@@ -103,9 +103,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     func show() {
         isHiding = false
         rememberPasteTarget(NSWorkspace.shared.frontmostApplication)
-
-        // Collapse cross-device duplicates before the history becomes visible.
-        store.dedupeSweep()
 
         guard let geometry = resolveGeometry() else { return }
         activeGeometry = geometry
@@ -232,7 +229,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func isPasteTargetCandidate(_ app: NSRunningApplication) -> Bool {
         app.processIdentifier != ProcessInfo.processInfo.processIdentifier
             && !app.isTerminated
-            && app.activationPolicy == .regular
+            && app.activationPolicy != .prohibited
     }
 
     private func installContent(
@@ -419,6 +416,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         isHiding = false
         activeGeometry = nil
         panel.orderOut(nil)
+        store.dedupeSweep()
     }
 
     private func paste(_ item: ClipItem) {

@@ -58,7 +58,9 @@ final class ClipStore: ObservableObject {
         save()
     }
 
-    /// Deletes history items that are neither pinned nor on a pinboard.
+    /// Deletes only disposable clipboard history. Pinned clips and clips saved
+    /// to a page/pinboard are user-saved content and must never be cleared by
+    /// history cleanup.
     func clearUnpinned() {
         do {
             for item in try fetchPrunable() {
@@ -96,6 +98,10 @@ final class ClipStore: ObservableObject {
 
     private func prune(to limit: Int) throws {
         guard limit > 0 else { return }
+        if try pruneOverflowUsingStorePredicate(to: limit) {
+            return
+        }
+
         let prunable = try fetchPrunable()
         guard prunable.count > limit else { return }
         let overflow = prunable
@@ -107,7 +113,34 @@ final class ClipStore: ObservableObject {
         try context.save()
     }
 
-    /// Items eligible for pruning/clearing: not pinned and not on a pinboard.
+    private func pruneOverflowUsingStorePredicate(to limit: Int) throws -> Bool {
+        let predicate = #Predicate<ClipItem> { !$0.isPinned && $0.pinboard == nil }
+        let overflow: [ClipItem]
+        do {
+            let count = try context.fetchCount(FetchDescriptor<ClipItem>(predicate: predicate))
+            let overflowCount = count - limit
+            guard overflowCount > 0 else { return true }
+
+            var descriptor = FetchDescriptor<ClipItem>(
+                predicate: predicate,
+                sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            )
+            descriptor.fetchLimit = overflowCount
+            overflow = try context.fetch(descriptor)
+        } catch {
+            // Optional relationship nil-predicates are not reliable on every
+            // SwiftData runtime, so callers fall back to the in-memory path.
+            return false
+        }
+
+        for item in overflow {
+            context.delete(item)
+        }
+        try context.save()
+        return true
+    }
+
+    /// Items eligible for pruning/clearing: not pinned and not saved to a page.
     /// Tries a store-level predicate first; SwiftData's support for optional
     /// relationship nil-comparisons has OS-version quirks, so fall back to an
     /// in-memory filter rather than failing the save.

@@ -1,15 +1,25 @@
 import AppKit
 import Foundation
 import OSLog
-import UniformTypeIdentifiers
 
 /// Polls `NSPasteboard.general` for changes and records new clips through
 /// `ClipStore`. Reads in priority order: file URLs, images (with any text
 /// flavor attached), web URLs, text.
 @MainActor
 final class ClipboardMonitor {
-    private static let pollInterval: TimeInterval = 0.4
-    private static let pollTolerance: TimeInterval = 0.1
+    private static let pollInterval: TimeInterval = 0.2
+    private static let pollTolerance: TimeInterval = 0.03
+    private static let copyBurstDelays: [UInt64] = [
+        30_000_000,
+        70_000_000,
+        120_000_000,
+        200_000_000,
+        350_000_000,
+        550_000_000,
+        800_000_000,
+        1_150_000_000,
+    ]
+    private static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
 
     /// Pasteboard marker types whose presence means the contents must never be
     /// recorded (transient values, password managers, auto-generated data).
@@ -19,6 +29,8 @@ final class ClipboardMonitor {
     private let store: ClipStore
     private let pasteboard: NSPasteboard = .general
     private var timer: Timer?
+    private var copyEventMonitor: Any?
+    private var copyBurstTask: Task<Void, Never>?
     private var lastChangeCount: Int
     /// Single in-flight image encode; a newer image capture cancels it, and a
     /// stale result (pasteboard changed again) is dropped on commit.
@@ -31,6 +43,14 @@ final class ClipboardMonitor {
     init(store: ClipStore) {
         self.store = store
         self.lastChangeCount = NSPasteboard.general.changeCount
+    }
+
+    deinit {
+        if let copyEventMonitor {
+            NSEvent.removeMonitor(copyEventMonitor)
+        }
+        copyBurstTask?.cancel()
+        imageEncodeTask?.cancel()
     }
 
     func start() {
@@ -46,11 +66,18 @@ final class ClipboardMonitor {
         timer.tolerance = Self.pollTolerance
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        installCopyEventMonitor()
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
+        if let copyEventMonitor {
+            NSEvent.removeMonitor(copyEventMonitor)
+            self.copyEventMonitor = nil
+        }
+        copyBurstTask?.cancel()
+        copyBurstTask = nil
     }
 
     /// Called by `PasteService` with the change count returned by
@@ -72,6 +99,36 @@ final class ClipboardMonitor {
         capture(changeCount: changeCount)
     }
 
+    private func installCopyEventMonitor() {
+        guard copyEventMonitor == nil else { return }
+        copyEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard Self.isCopyShortcut(event) else { return }
+            Task { @MainActor in
+                self?.startCopyBurstPolling()
+            }
+        }
+    }
+
+    private static func isCopyShortcut(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains(.command),
+              !flags.contains(.control),
+              !flags.contains(.option)
+        else { return false }
+        return event.charactersIgnoringModifiers?.lowercased() == "c"
+    }
+
+    private func startCopyBurstPolling() {
+        copyBurstTask?.cancel()
+        copyBurstTask = Task { [weak self] in
+            for delay in Self.copyBurstDelays {
+                try? await Task.sleep(nanoseconds: delay)
+                guard !Task.isCancelled else { return }
+                self?.poll()
+            }
+        }
+    }
+
     private func containsExcludedType() -> Bool {
         guard let types = pasteboard.types else { return false }
         return types.contains { Self.excludedTypeIdentifiers.contains($0.rawValue) }
@@ -90,9 +147,11 @@ final class ClipboardMonitor {
         }
 
         let rawString = pasteboard.string(forType: .string)
-        if let rawImageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
+        if let imageType = pasteboard.availableType(from: [.png, .tiff]),
+           let rawImageData = pasteboard.data(forType: imageType) {
             scheduleImageCapture(
                 rawImageData: rawImageData,
+                pasteboardType: imageType,
                 rawString: rawString,
                 appName: appName,
                 bundleID: bundleID,
@@ -122,29 +181,13 @@ final class ClipboardMonitor {
 
         let paths = urls.map { $0.path(percentEncoded: false) }
         let fileName = urls.count == 1 ? first.lastPathComponent : "\(urls.count) files"
-        let imageData = urls.count == 1 ? Self.imagePreviewData(forFileURL: first) : nil
         return CapturedContent(
             kind: .file,
             text: paths.joined(separator: "\n"),
-            imageData: imageData,
             fileName: fileName,
             sourceAppName: appName,
             sourceAppBundleID: bundleID
         )
-    }
-
-    private static func imagePreviewData(forFileURL url: URL) -> Data? {
-        guard isPreviewableImageFile(url) else { return nil }
-        guard let image = NSImage(contentsOf: url) else { return nil }
-        return ImageEncoder.png(from: image, maxByteCount: AppConstants.maxImageByteCount)
-    }
-
-    private static func isPreviewableImageFile(_ url: URL) -> Bool {
-        if let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
-            return contentType.conforms(to: .image)
-        }
-        let pathExtension = url.pathExtension.lowercased()
-        return ["png", "jpg", "jpeg", "heic", "webp", "tif", "tiff", "gif", "bmp"].contains(pathExtension)
     }
 
     private func stringContent(raw: String?, appName: String?, bundleID: String?) -> CapturedContent? {
@@ -192,6 +235,7 @@ final class ClipboardMonitor {
     /// spreadsheet cells), both flavors are stored.
     private func scheduleImageCapture(
         rawImageData: Data,
+        pasteboardType: NSPasteboard.PasteboardType,
         rawString: String?,
         appName: String?,
         bundleID: String?,
@@ -221,6 +265,14 @@ final class ClipboardMonitor {
             changeCount: changeCount
         )
         let maxByteCount = AppConstants.maxImageByteCount
+
+        if pasteboardType == .png,
+           rawImageData.count <= maxByteCount,
+           Self.isPNGData(rawImageData) {
+            commitImageCapture(pending, pngData: rawImageData)
+            return
+        }
+
         let logger = logger
 
         imageEncodeTask?.cancel()
@@ -249,6 +301,10 @@ final class ClipboardMonitor {
             sourceAppName: pending.sourceAppName,
             sourceAppBundleID: pending.sourceAppBundleID
         ))
+    }
+
+    private static func isPNGData(_ data: Data) -> Bool {
+        data.starts(with: pngSignature)
     }
 }
 

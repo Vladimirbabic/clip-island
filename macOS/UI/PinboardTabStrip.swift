@@ -57,7 +57,7 @@ struct PinboardTabStrip: View {
             if newValue == nil { commitPendingRename() }
         }
         .alert(
-            "Delete pinboard?",
+            "Delete page?",
             isPresented: Binding(
                 get: { boardPendingDelete != nil },
                 set: { if !$0 { boardPendingDelete = nil } }
@@ -116,7 +116,7 @@ struct PinboardTabStrip: View {
                     }
                 }
                 Divider()
-                Button("Delete Pinboard\u{2026}", role: .destructive) { boardPendingDelete = board }
+                Button("Delete Page\u{2026}", role: .destructive) { boardPendingDelete = board }
             }
         }
     }
@@ -173,7 +173,7 @@ struct PinboardTabStrip: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("New pinboard")
+        .help("New page")
     }
 
     // MARK: - Actions

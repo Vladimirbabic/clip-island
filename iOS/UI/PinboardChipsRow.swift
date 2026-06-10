@@ -25,20 +25,20 @@ struct PinboardChipsRow: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
-        .alert("Rename Pinboard", isPresented: isRenamePresented) {
+        .alert("Rename Page", isPresented: isRenamePresented) {
             TextField("Name", text: $renameText)
             Button("Rename") { commitRename() }
             Button("Cancel", role: .cancel) { renameTarget = nil }
         }
         .confirmationDialog(
-            "Delete \(deleteTarget?.displayName ?? "Pinboard")?",
+            "Delete \(deleteTarget?.displayName ?? "Page")?",
             isPresented: isDeletePresented,
             titleVisibility: .visible
         ) {
-            Button("Delete Pinboard", role: .destructive) { commitDelete() }
+            Button("Delete Page", role: .destructive) { commitDelete() }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("Items on this pinboard return to your history.")
+            Text("Items on this page return to your history.")
         }
     }
 
@@ -89,7 +89,7 @@ struct PinboardChipsRow: View {
             Button(role: .destructive) {
                 deleteTarget = board
             } label: {
-                Label("Delete Pinboard…", systemImage: "trash")
+                Label("Delete Page…", systemImage: "trash")
             }
         }
     }

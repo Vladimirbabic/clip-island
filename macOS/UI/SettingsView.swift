@@ -49,11 +49,11 @@ struct SettingsView: View {
             launchAtLogin = LaunchAtLogin.isEnabled
             loginItemStatus = LaunchAtLogin.status
         }
-        .alert("Clear clipboard history?", isPresented: $isShowingClearConfirmation) {
-            Button("Clear History", role: .destructive) { store.clearUnpinned() }
+        .alert("Clear unsaved history?", isPresented: $isShowingClearConfirmation) {
+            Button("Clear Unsaved History", role: .destructive) { store.clearUnpinned() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("All clips that are not pinned and not on a pinboard will be removed. This cannot be undone.")
+            Text("Pinned clips and clips saved to pages are kept. This cannot be undone.")
         }
     }
 
@@ -86,7 +86,7 @@ struct SettingsView: View {
                     Text("\(limit) items").tag(limit)
                 }
             }
-            Text("History keeps the newest \(store.historyLimit) clips. Pinned clips and pinboards are never removed.")
+            Text("History keeps the newest \(store.historyLimit) unsaved clips. Pinned clips and saved pages are never removed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !store.hasSyncedHistoryLimit {
@@ -196,7 +196,7 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section("Data") {
-            Button("Clear History\u{2026}", role: .destructive) {
+            Button("Clear Unsaved History\u{2026}", role: .destructive) {
                 isShowingClearConfirmation = true
             }
         }

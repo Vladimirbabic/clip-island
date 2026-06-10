@@ -48,13 +48,12 @@ struct HistoryView: View {
 
     // MARK: - Filtering
 
-    /// History shows items on no pinboard; the relationship-nil filter is
-    /// done in memory because `#Predicate` nil-comparisons on relationships
-    /// have OS-version quirks (see ClipStore.fetchPrunable).
+    /// History shows every clip. Page tabs are additional saved views; saving
+    /// a clip to a page must not make it disappear from the main history.
     private var tabItems: [ClipItem] {
         switch selectedTab {
         case .history:
-            return items.filter { $0.pinboard == nil }
+            return items
         case .board(let id):
             return items.filter { $0.pinboard?.persistentModelID == id }
         }
@@ -62,6 +61,10 @@ struct HistoryView: View {
 
     private var visibleItems: [ClipItem] {
         ClipSearch.filter(items: tabItems, query: query)
+    }
+
+    private var visibleItemIDs: [PersistentIdentifier] {
+        visibleItems.map(\.persistentModelID)
     }
 
     private var pinboardIDs: [PersistentIdentifier] {
@@ -83,17 +86,17 @@ struct HistoryView: View {
         .background(quickPasteShortcuts)
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: selectedTab) { _, _ in selectedIndex = 0 }
-        .onChange(of: visibleItems.count) { _, _ in clampSelection() }
+        .onChange(of: visibleItemIDs) { _, _ in clampSelection() }
         .onChange(of: pinboardIDs) { _, _ in validateSelectedTab() }
         .onAppear { focusGrid() }
         .onReceive(
             NotificationCenter.default.publisher(for: Notification.Name("clipStoryPanelDidShow"))
         ) { _ in resetForPresentation() }
-        .alert("Clear clipboard history?", isPresented: $isShowingClearConfirmation) {
-            Button("Clear History", role: .destructive) { store.clearUnpinned() }
+        .alert("Clear unsaved history?", isPresented: $isShowingClearConfirmation) {
+            Button("Clear Unsaved History", role: .destructive) { store.clearUnpinned() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("All clips that are not pinned and not on a pinboard will be removed. This cannot be undone.")
+            Text("Pinned clips and clips saved to pages are kept. This cannot be undone.")
         }
     }
 
@@ -136,7 +139,7 @@ struct HistoryView: View {
                     .onKeyPress(.rightArrow) { moveSelection(by: 1) }
                     .onKeyPress(.upArrow) { switchTab(by: -1) }
                     .onKeyPress(.downArrow) { switchTab(by: 1) }
-                    .onKeyPress(.tab) { switchTab(by: 1) }
+                    .onKeyPress(phases: .down) { handleSearchKey($0) }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
@@ -210,7 +213,7 @@ struct HistoryView: View {
     private var overflowMenu: some View {
         Menu {
             Button(isCapturePaused ? "Resume Capture" : "Pause Capture") { isCapturePaused.toggle() }
-            Button("Clear History\u{2026}") { isShowingClearConfirmation = true }
+            Button("Clear Unsaved History\u{2026}") { isShowingClearConfirmation = true }
             Divider()
             Button("Settings\u{2026}") {
                 onClose()
@@ -253,8 +256,9 @@ struct HistoryView: View {
                     }
                     .frame(height: Self.cardStripHeight, alignment: .top)
                     .onChange(of: selectedIndex) { _, newIndex in
+                        guard visibleItems.indices.contains(newIndex) else { return }
                         withAnimation(.easeOut(duration: 0.15)) {
-                            proxy.scrollTo(newIndex)
+                            proxy.scrollTo(visibleItems[newIndex].persistentModelID, anchor: .center)
                         }
                     }
                 }
@@ -274,7 +278,7 @@ struct HistoryView: View {
             isSelected: index == selectedIndex,
             quickPasteIndex: index < 9 ? index : nil
         )
-        .id(index)
+        .id(item.persistentModelID)
         .onTapGesture(count: 2) {
             selectedIndex = index
             onPaste(item)
@@ -290,7 +294,7 @@ struct HistoryView: View {
         Button("Paste") { onPaste(item) }
         Button("Copy") { PasteboardWriter.write(item: item) }
         Divider()
-        Menu("Add to Pinboard") {
+        Menu("Add to Page") {
             ForEach(pinboards, id: \.persistentModelID) { board in
                 Button(board.displayName) { store.assign(item, to: board) }
                     .disabled(item.pinboard?.persistentModelID == board.persistentModelID)
@@ -298,12 +302,12 @@ struct HistoryView: View {
             if !pinboards.isEmpty {
                 Divider()
             }
-            Button("New Pinboard\u{2026}") {
+            Button("New Page\u{2026}") {
                 if let board = store.createPinboard(named: "Untitled") { store.assign(item, to: board) }
             }
         }
         if item.pinboard != nil {
-            Button("Remove from Pinboard") { store.assign(item, to: nil) }
+            Button("Remove from Page") { store.assign(item, to: nil) }
         }
         Divider()
         Button("Delete", role: .destructive) { store.delete(item) }
@@ -337,7 +341,7 @@ struct HistoryView: View {
         }
         if let selectedBoard {
             return ("square.grid.2x2", "\(selectedBoard.displayName) is empty",
-                    "Right-click any clip to add it here.")
+                    "Right-click any clip to save it to this page.")
         }
         return ("doc.on.clipboard", "Copy something to get started",
                 "Press \u{21E7}\u{2318}V anytime to open ClipStory.")
@@ -390,6 +394,13 @@ struct HistoryView: View {
         default:
             return handleTyping(press)
         }
+    }
+
+    private func handleSearchKey(_ press: KeyPress) -> KeyPress.Result {
+        if press.key == .tab {
+            return switchTab(by: press.modifiers.contains(.shift) ? -1 : 1)
+        }
+        return .ignored
     }
 
     /// Cycles the selected tab (Clipboard History + each pinboard) with wrap.

@@ -78,6 +78,7 @@ targets:
       - path: Tests
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.vladbabic.clipstory.tests
 
 schemes:

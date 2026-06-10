@@ -6,7 +6,7 @@ import SwiftUI
 /// character-count footer with a quick-paste badge.
 @MainActor
 struct ClipCardView: View {
-    static let cardSize = CGSize(width: 190, height: 228)
+    static let cardSize = CGSize(width: 170, height: 204)
 
     private static let backgroundColor = Color(red: 0x1E / 255.0, green: 0x1E / 255.0, blue: 0x20 / 255.0)
     private static let selectionColor = Color(red: 0x34 / 255.0, green: 0x78 / 255.0, blue: 0xF6 / 255.0)
@@ -95,9 +95,9 @@ struct ClipCardView: View {
         case .text:
             // Always the capped preview — never the raw (possibly huge) text.
             Text(item.preview)
-                .font(.system(size: 12.5))
+                .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(9)
+                .lineLimit(8)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(10)
@@ -203,7 +203,7 @@ struct ClipCardView: View {
                     .font(.system(size: 28, weight: .light))
                     .foregroundStyle(.white.opacity(0.55))
                 Text(item.fileName ?? item.preview)
-                    .font(.system(size: 12))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(3)
                     .multilineTextAlignment(.center)

@@ -30,16 +30,16 @@ struct SettingsSheet: View {
                 }
             }
             .confirmationDialog(
-                "Clear Unpinned History?",
+                "Clear Unsaved History?",
                 isPresented: $isShowingClearConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Clear Unpinned History", role: .destructive) {
+                Button("Clear Unsaved History", role: .destructive) {
                     store.clearUnpinned()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Pinned items and pinboard items are kept. This cannot be undone.")
+                Text("Pinned clips and clips saved to pages are kept. This cannot be undone.")
             }
         }
         .onAppear {
@@ -69,7 +69,7 @@ struct SettingsSheet: View {
 
     private var historyFooter: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Older unpinned items beyond this limit are removed automatically. The limit is synced across devices.")
+            Text("Older unsaved history items beyond this limit are removed automatically. Pinned clips and saved pages are kept.")
             if !store.hasSyncedHistoryLimit {
                 Text("Pruning is inactive until a limit is chosen on any of your devices.")
             }
@@ -95,7 +95,7 @@ struct SettingsSheet: View {
 
     private var dangerSection: some View {
         Section {
-            Button("Clear Unpinned History…", role: .destructive) {
+            Button("Clear Unsaved History…", role: .destructive) {
                 isShowingClearConfirmation = true
             }
         } footer: {

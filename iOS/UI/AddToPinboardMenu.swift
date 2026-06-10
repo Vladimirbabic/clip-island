@@ -23,17 +23,17 @@ struct AddToPinboardMenu: View {
                     Divider()
                 }
                 Button(action: onCreateNewPinboard) {
-                    Label("New Pinboard…", systemImage: "plus")
+                    Label("New Page…", systemImage: "plus")
                 }
             } label: {
-                Label("Add to Pinboard", systemImage: "square.grid.2x2")
+                Label("Add to Page", systemImage: "square.grid.2x2")
             }
 
             if item.pinboard != nil {
                 Button {
                     store.assign(item, to: nil)
                 } label: {
-                    Label("Remove from Pinboard", systemImage: "minus.circle")
+                    Label("Remove from Page", systemImage: "minus.circle")
                 }
             }
         }

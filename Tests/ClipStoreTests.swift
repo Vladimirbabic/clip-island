@@ -153,13 +153,13 @@ final class ClipStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testClearUnpinnedKeepsPinnedAndBoardedItems() throws {
+    func testClearUnpinnedKeepsPinnedAndPageItems() throws {
         let store = makeStore()
         let pinned = try XCTUnwrap(store.insert(CapturedContent(kind: .text, text: "keep-pinned")))
         store.togglePin(pinned)
-        let boarded = try XCTUnwrap(store.insert(CapturedContent(kind: .text, text: "keep-boarded")))
+        let pageItem = try XCTUnwrap(store.insert(CapturedContent(kind: .text, text: "keep-page-item")))
         let board = try XCTUnwrap(store.createPinboard(named: "Work"))
-        store.assign(boarded, to: board)
+        store.assign(pageItem, to: board)
         store.insert(CapturedContent(kind: .text, text: "drop-1"))
         store.insert(CapturedContent(kind: .text, text: "drop-2"))
 
@@ -167,7 +167,8 @@ final class ClipStoreTests: XCTestCase {
 
         let remaining = try fetchAll()
         XCTAssertEqual(remaining.count, 2)
-        XCTAssertEqual(Set(remaining.compactMap(\.text)), ["keep-pinned", "keep-boarded"])
+        XCTAssertEqual(Set(remaining.compactMap(\.text)), ["keep-pinned", "keep-page-item"])
+        XCTAssertEqual(store.pinboards().map(\.displayName), ["Work"])
     }
 
     // MARK: - History limit / prune gating

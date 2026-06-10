@@ -31,6 +31,7 @@ struct ClipDetailView: View {
         }
         .navigationTitle(item.kind.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button(action: copyToClipboard) {
@@ -56,12 +57,12 @@ struct ClipDetailView: View {
                 .accessibilityLabel("Delete")
             }
         }
-        .alert("New Pinboard", isPresented: $isShowingNewBoardAlert) {
+        .alert("New Page", isPresented: $isShowingNewBoardAlert) {
             TextField("Name", text: $newBoardName)
             Button("Create") { commitNewBoard() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The clip is added to the new pinboard.")
+            Text("The clip is saved to the new page.")
         }
         .overlay(alignment: .bottom) {
             if let copyFeedback {
@@ -79,7 +80,7 @@ struct ClipDetailView: View {
         } label: {
             Image(systemName: "square.grid.2x2")
         }
-        .accessibilityLabel("Pinboard")
+        .accessibilityLabel("Page")
     }
 
     // MARK: - Content
@@ -149,7 +150,7 @@ struct ClipDetailView: View {
             LabeledContent("Source", value: source)
         }
         if let board = item.pinboard {
-            LabeledContent("Pinboard", value: board.displayName)
+            LabeledContent("Page", value: board.displayName)
         }
         LabeledContent("Date", value: item.createdAt.formatted(date: .abbreviated, time: .shortened))
         if item.kind == .text, let text = item.text {
