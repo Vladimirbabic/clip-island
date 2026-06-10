@@ -76,6 +76,15 @@ new `/task` items unless the user explicitly asks to implement them now.
   - [ ] macOS notarization.
   - [x] Release build workflow.
   - [x] Privacy copy and onboarding notes.
+  - [ ] Choose v1 launch channel and business model.
+  - [ ] Deploy CloudKit schema to production.
+  - [ ] Create Developer ID certificate/profile for CloudKit macOS distribution.
+  - [ ] Add Sparkle 2 for direct-download macOS updates.
+  - [ ] Create Sparkle signing keys and keep the private key outside the repo.
+  - [ ] Publish a stable appcast URL; GitHub Releases can host DMG/ZIP assets.
+  - [ ] Decide ZIP vs DMG for the first public artifact.
+  - [ ] Create support URL, privacy policy URL, and landing/download page.
+  - [ ] Prepare App Store Connect metadata and screenshots.
 
 ## Parked / Not Now
 
