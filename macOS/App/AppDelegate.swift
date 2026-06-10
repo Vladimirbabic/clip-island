@@ -84,16 +84,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureStatusItem() {
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "doc.on.clipboard",
-                accessibilityDescription: "ClipStory"
-            )
+            button.image = Self.statusItemImage()
+            button.imagePosition = .imageOnly
             button.toolTip = "ClipStory — clipboard history (\u{21E7}\u{2318}V)"
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         self.statusItem = statusItem
+    }
+
+    private static func statusItemImage() -> NSImage {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        for symbolName in ["doc.on.clipboard", "clipboard", "doc.on.doc"] {
+            if let image = NSImage(
+                systemSymbolName: symbolName,
+                accessibilityDescription: "ClipStory"
+            )?.withSymbolConfiguration(configuration) {
+                image.isTemplate = true
+                return image
+            }
+        }
+
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            NSColor.black.setStroke()
+            let board = NSBezierPath(
+                roundedRect: NSRect(x: rect.minX + 4, y: rect.minY + 3, width: 10, height: 12),
+                xRadius: 2,
+                yRadius: 2
+            )
+            board.lineWidth = 1.8
+            board.stroke()
+
+            let clip = NSBezierPath(
+                roundedRect: NSRect(x: rect.minX + 6.25, y: rect.minY + 12, width: 5.5, height: 3),
+                xRadius: 1.4,
+                yRadius: 1.4
+            )
+            clip.lineWidth = 1.6
+            clip.stroke()
+
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     @objc private func statusItemClicked(_ sender: Any?) {

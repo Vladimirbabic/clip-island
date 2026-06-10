@@ -26,6 +26,14 @@ struct HistoryView: View {
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isGridFocused: Bool
 
+    private static let topBarLeadingWidth: CGFloat = 118
+    private static let topBarTrailingWidth: CGFloat = 26
+    private static let cardPadding: CGFloat = 16
+    private static let cardSpacing: CGFloat = 12
+    private static var cardStripHeight: CGFloat {
+        ClipCardView.cardSize.height + cardPadding * 2
+    }
+
     init(
         store: ClipStore,
         syncStatus: CloudSyncStatus,
@@ -92,16 +100,19 @@ struct HistoryView: View {
     // MARK: - Top bar
 
     private var topBar: some View {
-        ZStack {
+        HStack(spacing: 10) {
+            syncChip
+                .frame(width: Self.topBarLeadingWidth, alignment: .leading)
             HStack(spacing: 10) {
                 searchControl
-                PinboardTabStrip(pinboards: pinboards, selection: $selectedTab)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    PinboardTabStrip(pinboards: pinboards, selection: $selectedTab)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
-            HStack(spacing: 10) {
-                syncChip
-                Spacer()
-                overflowMenu
-            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            overflowMenu
+                .frame(width: Self.topBarTrailingWidth, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
@@ -145,25 +156,42 @@ struct HistoryView: View {
 
     @ViewBuilder
     private var syncChip: some View {
-        if !syncStatus.state.isSyncing {
-            HStack(spacing: 5) {
-                Image(systemName: "icloud.slash").font(.system(size: 10.5))
-                Text(syncChipText).font(.system(size: 11))
-            }
-            .foregroundStyle(.white.opacity(0.6))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.white.opacity(0.08), in: Capsule())
-            .help(syncStatus.statusText)
+        HStack(spacing: 5) {
+            Image(systemName: syncSymbolName).font(.system(size: 10.5, weight: .semibold))
+            Text(syncChipText).font(.system(size: 11))
         }
+        .foregroundStyle(syncChipColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.white.opacity(0.08), in: Capsule())
+        .fixedSize()
+        .help(syncStatus.statusText)
     }
 
     private var syncChipText: String {
         switch syncStatus.state {
-        case .syncing: return ""
-        case .noAccount: return "iCloud off"
+        case .syncing: return "iCloud On"
+        case .noAccount: return "No account"
         case .localOnly: return "Local only"
         case .ephemeral: return "Not saved"
+        }
+    }
+
+    private var syncSymbolName: String {
+        switch syncStatus.state {
+        case .syncing: return "checkmark.icloud"
+        case .noAccount: return "icloud.slash"
+        case .localOnly: return "xmark.icloud"
+        case .ephemeral: return "exclamationmark.icloud"
+        }
+    }
+
+    private var syncChipColor: Color {
+        switch syncStatus.state {
+        case .syncing: return .green
+        case .noAccount: return .orange
+        case .localOnly: return .white.opacity(0.6)
+        case .ephemeral: return .red
         }
     }
 
@@ -213,7 +241,7 @@ struct HistoryView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 12) {
+                        LazyHStack(spacing: Self.cardSpacing) {
                             ForEach(
                                 Array(visibleItems.enumerated()),
                                 id: \.element.persistentModelID
@@ -221,9 +249,9 @@ struct HistoryView: View {
                                 card(for: item, at: index)
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 16)
+                        .padding(Self.cardPadding)
                     }
+                    .frame(height: Self.cardStripHeight, alignment: .top)
                     .onChange(of: selectedIndex) { _, newIndex in
                         withAnimation(.easeOut(duration: 0.15)) {
                             proxy.scrollTo(newIndex)
@@ -232,7 +260,7 @@ struct HistoryView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .contentShape(Rectangle())
         .focusable()
         .focusEffectDisabled()

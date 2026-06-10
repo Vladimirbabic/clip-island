@@ -10,6 +10,8 @@ final class PasteService {
     /// the synthesized ⌘V. The panel has already been ordered out synchronously
     /// by `PanelController` before this delay starts.
     private static let pasteDelay: TimeInterval = 0.15
+    private static let activationPollInterval: TimeInterval = 0.04
+    private static let maxActivationAttempts = 12
     private nonisolated static let vKeyCode: CGKeyCode = 9
 
     private let monitor: ClipboardMonitor
@@ -59,7 +61,34 @@ final class PasteService {
         copy(item: item)
         guard Self.isAccessibilityTrusted else { return }
 
-        previousApp?.activate()
+        guard let previousApp, !previousApp.isTerminated else {
+            postCommandVAfterPasteDelay()
+            return
+        }
+
+        previousApp.activate()
+        waitForActivation(of: previousApp, attempt: 0)
+    }
+
+    private func waitForActivation(of app: NSRunningApplication, attempt: Int) {
+        if isActivePasteTarget(app) || attempt >= Self.maxActivationAttempts {
+            postCommandVAfterPasteDelay()
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.activationPollInterval) { [weak self] in
+            Task { @MainActor in
+                self?.waitForActivation(of: app, attempt: attempt + 1)
+            }
+        }
+    }
+
+    private func isActivePasteTarget(_ app: NSRunningApplication) -> Bool {
+        app.isActive
+            || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+    }
+
+    private func postCommandVAfterPasteDelay() {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteDelay) {
             Self.postCommandV()
         }

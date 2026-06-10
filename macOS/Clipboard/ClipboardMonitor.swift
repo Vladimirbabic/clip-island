@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
 
 /// Polls `NSPasteboard.general` for changes and records new clips through
 /// `ClipStore`. Reads in priority order: file URLs, images (with any text
@@ -121,13 +122,29 @@ final class ClipboardMonitor {
 
         let paths = urls.map { $0.path(percentEncoded: false) }
         let fileName = urls.count == 1 ? first.lastPathComponent : "\(urls.count) files"
+        let imageData = urls.count == 1 ? Self.imagePreviewData(forFileURL: first) : nil
         return CapturedContent(
             kind: .file,
             text: paths.joined(separator: "\n"),
+            imageData: imageData,
             fileName: fileName,
             sourceAppName: appName,
             sourceAppBundleID: bundleID
         )
+    }
+
+    private static func imagePreviewData(forFileURL url: URL) -> Data? {
+        guard isPreviewableImageFile(url) else { return nil }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        return ImageEncoder.png(from: image, maxByteCount: AppConstants.maxImageByteCount)
+    }
+
+    private static func isPreviewableImageFile(_ url: URL) -> Bool {
+        if let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
+            return contentType.conforms(to: .image)
+        }
+        let pathExtension = url.pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "heic", "webp", "tif", "tiff", "gif", "bmp"].contains(pathExtension)
     }
 
     private func stringContent(raw: String?, appName: String?, bundleID: String?) -> CapturedContent? {

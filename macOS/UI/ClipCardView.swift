@@ -6,7 +6,7 @@ import SwiftUI
 /// character-count footer with a quick-paste badge.
 @MainActor
 struct ClipCardView: View {
-    static let cardSize = CGSize(width: 200, height: 240)
+    static let cardSize = CGSize(width: 190, height: 228)
 
     private static let backgroundColor = Color(red: 0x1E / 255.0, green: 0x1E / 255.0, blue: 0x20 / 255.0)
     private static let selectionColor = Color(red: 0x34 / 255.0, green: 0x78 / 255.0, blue: 0xF6 / 255.0)
@@ -40,10 +40,10 @@ struct ClipCardView: View {
         }
         .frame(width: Self.cardSize.width, height: Self.cardSize.height)
         .background(Self.backgroundColor)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 13))
         .overlay {
             if isSelected {
-                RoundedRectangle(cornerRadius: 17.5)
+                RoundedRectangle(cornerRadius: 16.5)
                     .stroke(Self.selectionColor, lineWidth: 3)
                     .padding(-3.5)
             }
@@ -56,7 +56,7 @@ struct ClipCardView: View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.kind.displayName)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(Self.relativeFormatter.localizedString(for: item.createdAt, relativeTo: Date()))
                     .font(.system(size: 11))
@@ -67,12 +67,12 @@ struct ClipCardView: View {
             Image(nsImage: AppIconProvider.icon(forBundleID: item.sourceAppBundleID))
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 26, height: 26)
+                .frame(width: 24, height: 24)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity)
-        .frame(height: 46, alignment: .top)
+        .frame(height: 43, alignment: .top)
         .background(headerBackground)
     }
 
@@ -180,19 +180,68 @@ struct ClipCardView: View {
         }
     }
 
+    @ViewBuilder
     private var fileBody: some View {
-        VStack(spacing: 8) {
-            Image(systemName: item.kind.systemImageName)
-                .font(.system(size: 28, weight: .light))
-                .foregroundStyle(.white.opacity(0.55))
-            Text(item.fileName ?? item.preview)
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(3)
-                .multilineTextAlignment(.center)
+        if let thumbnail = filePreviewThumbnail {
+            Color.clear
+                .overlay(Image(nsImage: thumbnail).resizable().scaledToFill())
+                .clipped()
+                .overlay(alignment: .bottomLeading) {
+                    Text(item.fileName ?? item.preview)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(2)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .environment(\.colorScheme, .dark)
+                        .padding(8)
+                }
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: item.kind.systemImageName)
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(.white.opacity(0.55))
+                Text(item.fileName ?? item.preview)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var filePreviewThumbnail: NSImage? {
+        if let data = item.imageData {
+            return ClipThumbnailCache.thumbnail(forData: data, key: item.contentHash)
+        }
+        guard let url = firstExistingFileURL, Self.isPreviewableImageFile(url) else {
+            return nil
+        }
+        return ClipThumbnailCache.thumbnail(forURL: url, key: filePreviewCacheKey(for: url))
+    }
+
+    private var firstExistingFileURL: URL? {
+        let paths = (item.text ?? "")
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+        return paths.lazy
+            .map(URL.init(fileURLWithPath:))
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private static func isPreviewableImageFile(_ url: URL) -> Bool {
+        ["png", "jpg", "jpeg", "heic", "webp", "tif", "tiff", "gif", "bmp"]
+            .contains(url.pathExtension.lowercased())
+    }
+
+    private func filePreviewCacheKey(for url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let modifiedAt = values?.contentModificationDate?.timeIntervalSinceReferenceDate ?? 0
+        let fileSize = values?.fileSize ?? 0
+        return "file:\(url.path):\(modifiedAt):\(fileSize)"
     }
 
     // MARK: - Footer
@@ -218,7 +267,7 @@ struct ClipCardView: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(height: 24)
+        .frame(height: 23)
     }
 
     private var footerText: String? {
@@ -257,6 +306,20 @@ enum ClipThumbnailCache {
         let cacheKey = key as NSString
         if let cached = thumbnails.object(forKey: cacheKey) { return cached }
         guard let source = makeSource(for: data) else { return nil }
+        return thumbnail(from: source, cacheKey: cacheKey)
+    }
+
+    static func thumbnail(forURL url: URL, key: String) -> NSImage? {
+        let cacheKey = key as NSString
+        if let cached = thumbnails.object(forKey: cacheKey) { return cached }
+        let options = [kCGImageSourceShouldCache: false] as [CFString: Any]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary) else {
+            return nil
+        }
+        return thumbnail(from: source, cacheKey: cacheKey)
+    }
+
+    private static func thumbnail(from source: CGImageSource, cacheKey: NSString) -> NSImage? {
         let options = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,

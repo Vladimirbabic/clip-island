@@ -35,8 +35,8 @@ private final class HistoryPanel: NSPanel {
 /// opened, and collapses back into it when dismissed.
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private static let panelWidth: CGFloat = 720
-    private static let panelHeight: CGFloat = 392
+    private static let panelWidth: CGFloat = 880
+    private static let panelHeight: CGFloat = 348
     private static let cornerRadiusFull: CGFloat = 24
     private static let cornerRadiusNotch: CGFloat = 10
     private static let openDuration: CFTimeInterval = 0.26
@@ -61,6 +61,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// App that was frontmost when the panel was last shown; paste target.
     private var pasteTarget: NSRunningApplication?
+    private var activeAppObserver: NSObjectProtocol?
     private var isHiding = false
 
     init(
@@ -79,7 +80,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         )
         super.init()
         configurePanel()
+        observeActiveApplication()
         installContent(store: store, container: container, syncStatus: syncStatus)
+    }
+
+    deinit {
+        if let activeAppObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activeAppObserver)
+        }
     }
 
     // MARK: - Public API
@@ -94,12 +102,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show() {
         isHiding = false
-        // Never record ourselves as the paste target (e.g. when toggling via
-        // the status item); keep the previous target instead.
-        if let app = NSWorkspace.shared.frontmostApplication,
-           app.processIdentifier != ProcessInfo.processInfo.processIdentifier {
-            pasteTarget = app
-        }
+        rememberPasteTarget(NSWorkspace.shared.frontmostApplication)
 
         // Collapse cross-device duplicates before the history becomes visible.
         store.dedupeSweep()
@@ -177,8 +180,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         // presents its own key window; collapsing the panel then would yank it
         // out from under them. Defer a tick and only dismiss when key truly
         // left our app (no key window of ours remains).
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
             guard let self else { return }
+            guard self.panel.isVisible, !self.isHiding, !self.panel.isKeyWindow else { return }
             if NSApp.keyWindow == nil {
                 self.hide()
             }
@@ -205,6 +209,30 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.onCancel = { [weak self] in
             self?.hide()
         }
+    }
+
+    private func observeActiveApplication() {
+        activeAppObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            Task { @MainActor in
+                self?.rememberPasteTarget(app)
+            }
+        }
+    }
+
+    private func rememberPasteTarget(_ app: NSRunningApplication?) {
+        guard let app, isPasteTargetCandidate(app) else { return }
+        pasteTarget = app
+    }
+
+    private func isPasteTargetCandidate(_ app: NSRunningApplication) -> Bool {
+        app.processIdentifier != ProcessInfo.processInfo.processIdentifier
+            && !app.isTerminated
+            && app.activationPolicy == .regular
     }
 
     private func installContent(
