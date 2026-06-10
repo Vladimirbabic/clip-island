@@ -36,10 +36,7 @@ enum PasteboardWriter {
 
     private static func writeImage(_ item: ClipItem, to pasteboard: NSPasteboard) {
         guard let data = item.imageData else { return }
-        pasteboard.setData(data, forType: .png)
-        if let tiff = NSImage(data: data)?.tiffRepresentation {
-            pasteboard.setData(tiff, forType: .tiff)
-        }
+        writeImageFlavors(data, to: pasteboard)
     }
 
     private static func writeFile(_ item: ClipItem, to pasteboard: NSPasteboard) {
@@ -52,6 +49,11 @@ enum PasteboardWriter {
 
         if !existingURLs.isEmpty {
             pasteboard.writeObjects(existingURLs)
+            if let data = item.imageData, isImageFileClip(item) {
+                writeImageFlavors(data, to: pasteboard)
+            }
+        } else if let data = item.imageData, isImageFileClip(item) {
+            writeImageFlavors(data, to: pasteboard)
         } else if let url = materializedFileURL(for: item) {
             pasteboard.writeObjects([url as NSURL])
         } else if let path = item.text, !path.isEmpty {
@@ -76,5 +78,27 @@ enum PasteboardWriter {
         } catch {
             return nil
         }
+    }
+
+    private static func writeImageFlavors(_ data: Data, to pasteboard: NSPasteboard) {
+        pasteboard.setData(data, forType: .png)
+        if let tiff = NSImage(data: data)?.tiffRepresentation {
+            pasteboard.setData(tiff, forType: .tiff)
+        }
+    }
+
+    private static func isImageFileClip(_ item: ClipItem) -> Bool {
+        guard item.kind == .file else { return false }
+        if let fileName = item.fileName, isPreviewableImagePath(fileName) {
+            return true
+        }
+        return (item.text ?? "")
+            .split(separator: "\n")
+            .contains { isPreviewableImagePath(String($0)) }
+    }
+
+    private static func isPreviewableImagePath(_ path: String) -> Bool {
+        ["png", "jpg", "jpeg", "heic", "webp", "tif", "tiff", "gif", "bmp"]
+            .contains(URL(fileURLWithPath: path).pathExtension.lowercased())
     }
 }

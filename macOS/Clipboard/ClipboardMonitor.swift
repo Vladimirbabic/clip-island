@@ -33,10 +33,9 @@ final class ClipboardMonitor {
     private var copyEventMonitor: Any?
     private var copyBurstTask: Task<Void, Never>?
     private var lastChangeCount: Int
-    /// Single in-flight image encode; a newer image capture cancels it, and a
-    /// stale result (pasteboard changed again) is dropped on commit.
-    private var imageEncodeTask: Task<Void, Never>?
-    private var filePreviewEncodeTask: Task<Void, Never>?
+    /// In-flight media work keyed independently so rapid screenshot/image
+    /// bursts do not cancel older items before their image payload is stored.
+    private var mediaTasks: [UUID: Task<Void, Never>] = [:]
 
     /// Invoked after every successfully inserted clip. `AppDelegate` uses this
     /// to kick off link-metadata fetches for `.url` items.
@@ -52,8 +51,7 @@ final class ClipboardMonitor {
             NSEvent.removeMonitor(copyEventMonitor)
         }
         copyBurstTask?.cancel()
-        imageEncodeTask?.cancel()
-        filePreviewEncodeTask?.cancel()
+        mediaTasks.values.forEach { $0.cancel() }
     }
 
     func start() {
@@ -81,6 +79,8 @@ final class ClipboardMonitor {
         }
         copyBurstTask?.cancel()
         copyBurstTask = nil
+        mediaTasks.values.forEach { $0.cancel() }
+        mediaTasks.removeAll()
     }
 
     /// Called by `PasteService` with the change count returned by
@@ -99,7 +99,7 @@ final class ClipboardMonitor {
 
         guard !UserDefaults.standard.bool(forKey: AppConstants.capturePausedKey) else { return }
         guard !containsExcludedType() else { return }
-        capture(changeCount: changeCount)
+        capture()
     }
 
     private func installCopyEventMonitor() {
@@ -139,7 +139,7 @@ final class ClipboardMonitor {
 
     // MARK: - Reading
 
-    private func capture(changeCount: Int) {
+    private func capture() {
         let sourceApp = NSWorkspace.shared.frontmostApplication
         let appName = sourceApp?.localizedName
         let bundleID = sourceApp?.bundleIdentifier
@@ -160,8 +160,7 @@ final class ClipboardMonitor {
                 pasteboardType: imageType,
                 rawString: rawString,
                 appName: appName,
-                bundleID: bundleID,
-                changeCount: changeCount
+                bundleID: bundleID
             )
             return
         }
@@ -246,7 +245,6 @@ final class ClipboardMonitor {
         let text: String?
         let sourceAppName: String?
         let sourceAppBundleID: String?
-        let changeCount: Int
     }
 
     /// Pasteboard reads and the kind decision happen on the main actor; only
@@ -258,8 +256,7 @@ final class ClipboardMonitor {
         pasteboardType: NSPasteboard.PasteboardType,
         rawString: String?,
         appName: String?,
-        bundleID: String?,
-        changeCount: Int
+        bundleID: String?
     ) {
         var kind: ClipKind = .image
         var text: String?
@@ -281,8 +278,7 @@ final class ClipboardMonitor {
             kind: kind,
             text: text,
             sourceAppName: appName,
-            sourceAppBundleID: bundleID,
-            changeCount: changeCount
+            sourceAppBundleID: bundleID
         )
         let maxByteCount = AppConstants.maxImageByteCount
 
@@ -296,9 +292,13 @@ final class ClipboardMonitor {
         }
 
         let logger = logger
-
-        imageEncodeTask?.cancel()
-        imageEncodeTask = Task.detached(priority: .utility) { [weak self] in
+        let taskID = UUID()
+        mediaTasks[taskID] = Task.detached(priority: .utility) { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.mediaTasks[taskID] = nil
+                }
+            }
             guard
                 let image = NSImage(data: rawImageData),
                 let pngData = ImageEncoder.png(from: image, maxByteCount: maxByteCount)
@@ -320,8 +320,6 @@ final class ClipboardMonitor {
         pngData: Data,
         recognizedText: String? = nil
     ) -> ClipItem? {
-        // Drop stale results: the pasteboard changed again while encoding.
-        guard lastChangeCount == pending.changeCount else { return nil }
         return insert(CapturedContent(
             kind: pending.kind,
             text: pending.text,
@@ -337,8 +335,13 @@ final class ClipboardMonitor {
         let maxByteCount = AppConstants.maxImageByteCount
         let logger = logger
 
-        filePreviewEncodeTask?.cancel()
-        filePreviewEncodeTask = Task.detached(priority: .utility) { [weak self] in
+        let taskID = UUID()
+        mediaTasks[taskID] = Task.detached(priority: .utility) { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.mediaTasks[taskID] = nil
+                }
+            }
             guard let pngData = ImageEncoder.previewPNG(fromFileAt: fileURL, maxByteCount: maxByteCount) else {
                 logger.error("Dropping file preview: decode/encode failed or image exceeds size cap")
                 return
@@ -357,7 +360,13 @@ final class ClipboardMonitor {
 
     private func scheduleOCRUpdate(contentHash: String, imageData: Data) {
         let store = store
-        imageEncodeTask = Task.detached(priority: .utility) {
+        let taskID = UUID()
+        mediaTasks[taskID] = Task.detached(priority: .utility) { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.mediaTasks[taskID] = nil
+                }
+            }
             let recognizedText = ImageTextRecognizer.recognizedText(in: imageData)
             guard !Task.isCancelled else { return }
             await MainActor.run {

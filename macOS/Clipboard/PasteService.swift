@@ -104,10 +104,7 @@ final class PasteService {
             pasteboard.setString(text, forType: .string)
         }
         if let pngData = item.imageData {
-            pasteboard.setData(pngData, forType: .png)
-            if let tiffData = NSImage(data: pngData)?.tiffRepresentation {
-                pasteboard.setData(tiffData, forType: .tiff)
-            }
+            writeImageFlavors(pngData, to: pasteboard)
         }
     }
 
@@ -124,6 +121,13 @@ final class PasteService {
 
         if !existingURLs.isEmpty {
             pasteboard.writeObjects(existingURLs)
+            if let pngData = item.imageData, isImageFileClip(item) {
+                writeImageFlavors(pngData, to: pasteboard)
+            }
+            return
+        }
+        if let pngData = item.imageData, isImageFileClip(item) {
+            writeImageFlavors(pngData, to: pasteboard)
             return
         }
         if let url = materializedFileURL(for: item) {
@@ -148,6 +152,28 @@ final class PasteService {
         } catch {
             return nil
         }
+    }
+
+    private func writeImageFlavors(_ pngData: Data, to pasteboard: NSPasteboard) {
+        pasteboard.setData(pngData, forType: .png)
+        if let tiffData = NSImage(data: pngData)?.tiffRepresentation {
+            pasteboard.setData(tiffData, forType: .tiff)
+        }
+    }
+
+    private func isImageFileClip(_ item: ClipItem) -> Bool {
+        guard item.kind == .file else { return false }
+        if let fileName = item.fileName, Self.isPreviewableImagePath(fileName) {
+            return true
+        }
+        return (item.text ?? "")
+            .split(separator: "\n")
+            .contains { Self.isPreviewableImagePath(String($0)) }
+    }
+
+    private static func isPreviewableImagePath(_ path: String) -> Bool {
+        ["png", "jpg", "jpeg", "heic", "webp", "tif", "tiff", "gif", "bmp"]
+            .contains(URL(fileURLWithPath: path).pathExtension.lowercased())
     }
 
     private nonisolated static func postCommandV() {
