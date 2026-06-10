@@ -75,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        AppEnvironment.shared.syncStatus.refresh()
+        refreshStatusItemVisibility()
+    }
+
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
     }
@@ -82,21 +87,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Status item
 
     private func configureStatusItem() {
-        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let statusItem = NSStatusBar.system.statusItem(withLength: 28)
+        statusItem.isVisible = true
         if let button = statusItem.button {
-            button.image = Self.statusItemImage()
-            button.imagePosition = .imageOnly
+            if let image = Self.statusItemImage() {
+                button.image = image
+                button.imageScaling = .scaleProportionallyDown
+                button.imagePosition = .imageOnly
+                button.title = ""
+            } else {
+                button.image = nil
+                button.title = "ClipStory"
+                button.imagePosition = .noImage
+                statusItem.length = NSStatusItem.variableLength
+            }
             button.toolTip = "ClipStory — clipboard history (\u{21E7}\u{2318}V)"
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         self.statusItem = statusItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.refreshStatusItemVisibility()
+        }
     }
 
-    private static func statusItemImage() -> NSImage {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-        for symbolName in ["doc.on.clipboard", "clipboard", "doc.on.doc"] {
+    private func refreshStatusItemVisibility() {
+        guard let statusItem else {
+            configureStatusItem()
+            return
+        }
+        statusItem.isVisible = true
+        guard let button = statusItem.button, button.image == nil, button.title.isEmpty else { return }
+        if let image = Self.statusItemImage() {
+            button.image = image
+            button.imageScaling = .scaleProportionallyDown
+            button.imagePosition = .imageOnly
+            button.title = ""
+            statusItem.length = 28
+        } else {
+            button.title = "ClipStory"
+            statusItem.length = NSStatusItem.variableLength
+        }
+    }
+
+    private static func statusItemImage() -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        for symbolName in ["clipboard", "doc.on.clipboard", "doc.on.doc"] {
             if let image = NSImage(
                 systemSymbolName: symbolName,
                 accessibilityDescription: "ClipStory"

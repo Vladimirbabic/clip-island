@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import OSLog
 
 /// Polls `NSPasteboard.general` for changes and records new clips through
@@ -35,6 +36,7 @@ final class ClipboardMonitor {
     /// Single in-flight image encode; a newer image capture cancels it, and a
     /// stale result (pasteboard changed again) is dropped on commit.
     private var imageEncodeTask: Task<Void, Never>?
+    private var filePreviewEncodeTask: Task<Void, Never>?
 
     /// Invoked after every successfully inserted clip. `AppDelegate` uses this
     /// to kick off link-metadata fetches for `.url` items.
@@ -51,6 +53,7 @@ final class ClipboardMonitor {
         }
         copyBurstTask?.cancel()
         imageEncodeTask?.cancel()
+        filePreviewEncodeTask?.cancel()
     }
 
     func start() {
@@ -141,8 +144,11 @@ final class ClipboardMonitor {
         let appName = sourceApp?.localizedName
         let bundleID = sourceApp?.bundleIdentifier
 
-        if let content = readFileURLs(appName: appName, bundleID: bundleID) {
-            insert(content)
+        if let fileCapture = readFileURLs(appName: appName, bundleID: bundleID) {
+            if let item = insert(fileCapture.content),
+               let previewURL = fileCapture.previewURL {
+                scheduleFilePreviewCapture(for: item, fileURL: previewURL)
+            }
             return
         }
 
@@ -165,14 +171,21 @@ final class ClipboardMonitor {
         }
     }
 
-    private func insert(_ content: CapturedContent) {
-        guard let item = store.insert(content) else { return }
+    @discardableResult
+    private func insert(_ content: CapturedContent) -> ClipItem? {
+        guard let item = store.insert(content) else { return nil }
         onItemCaptured?(item)
+        return item
+    }
+
+    private struct FileCapture {
+        let content: CapturedContent
+        let previewURL: URL?
     }
 
     /// Captures ALL file URLs on the pasteboard: one absolute path per line in
     /// `text`, and a `fileName` of either the single file's name or "N files".
-    private func readFileURLs(appName: String?, bundleID: String?) -> CapturedContent? {
+    private func readFileURLs(appName: String?, bundleID: String?) -> FileCapture? {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         guard
             let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
@@ -181,13 +194,15 @@ final class ClipboardMonitor {
 
         let paths = urls.map { $0.path(percentEncoded: false) }
         let fileName = urls.count == 1 ? first.lastPathComponent : "\(urls.count) files"
-        return CapturedContent(
+        let previewURL = urls.count == 1 && Self.isPreviewableImageFile(first) ? first : nil
+        let content = CapturedContent(
             kind: .file,
             text: paths.joined(separator: "\n"),
             fileName: fileName,
             sourceAppName: appName,
             sourceAppBundleID: bundleID
         )
+        return FileCapture(content: content, previewURL: previewURL)
     }
 
     private func stringContent(raw: String?, appName: String?, bundleID: String?) -> CapturedContent? {
@@ -215,6 +230,11 @@ final class ClipboardMonitor {
         guard !string.contains(where: \.isWhitespace) else { return false }
         guard let url = URL(string: string), let scheme = url.scheme?.lowercased() else { return false }
         return (scheme == "http" || scheme == "https") && url.host != nil
+    }
+
+    private static func isPreviewableImageFile(_ url: URL) -> Bool {
+        ["png", "jpg", "jpeg", "heic", "webp", "tif", "tiff", "gif", "bmp"]
+            .contains(url.pathExtension.lowercased())
     }
 
     // MARK: - Image capture (async encode)
@@ -303,6 +323,24 @@ final class ClipboardMonitor {
         ))
     }
 
+    private func scheduleFilePreviewCapture(for item: ClipItem, fileURL: URL) {
+        let contentHash = item.contentHash
+        let maxByteCount = AppConstants.maxImageByteCount
+        let logger = logger
+
+        filePreviewEncodeTask?.cancel()
+        filePreviewEncodeTask = Task.detached(priority: .utility) { [weak self] in
+            guard let pngData = ImageEncoder.previewPNG(fromFileAt: fileURL, maxByteCount: maxByteCount) else {
+                logger.error("Dropping file preview: decode/encode failed or image exceeds size cap")
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                self?.store.updateFilePreview(contentHash: contentHash, imageData: pngData)
+            }
+        }
+    }
+
     private static func isPNGData(_ data: Data) -> Bool {
         data.starts(with: pngSignature)
     }
@@ -311,6 +349,8 @@ final class ClipboardMonitor {
 /// PNG re-encoding with proportional downscaling so stored images stay under
 /// the CloudKit-friendly size cap. Pure pixel work — safe off the main actor.
 private enum ImageEncoder {
+    private static let filePreviewMaxPixelSize = 1_200
+
     static func png(from image: NSImage, maxByteCount: Int) -> Data? {
         guard var cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
@@ -325,8 +365,37 @@ private enum ImageEncoder {
         return data
     }
 
+    static func previewPNG(fromFileAt url: URL, maxByteCount: Int) -> Data? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as [CFString: Any]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions as CFDictionary) else {
+            return nil
+        }
+
+        var maxPixelSize = filePreviewMaxPixelSize
+        while maxPixelSize >= 120 {
+            guard let cgImage = thumbnail(from: source, maxPixelSize: maxPixelSize) else {
+                return nil
+            }
+            if let data = pngData(from: cgImage), data.count <= maxByteCount {
+                return data
+            }
+            maxPixelSize /= 2
+        }
+        return nil
+    }
+
     private static func pngData(from cgImage: CGImage) -> Data? {
         NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
+    }
+
+    private static func thumbnail(from source: CGImageSource, maxPixelSize: Int) -> CGImage? {
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ] as [CFString: Any]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     private static func halved(_ cgImage: CGImage) -> CGImage? {

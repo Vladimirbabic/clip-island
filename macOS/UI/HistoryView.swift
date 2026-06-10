@@ -22,6 +22,7 @@ struct HistoryView: View {
     @State private var isSearchExpanded = false
     @State private var selectedTab: PanelTab = .history
     @State private var selectedIndex = 0
+    @State private var wheelAccumulator: CGFloat = 0
     @State private var isShowingClearConfirmation = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isGridFocused: Bool
@@ -30,6 +31,7 @@ struct HistoryView: View {
     private static let topBarTrailingWidth: CGFloat = 26
     private static let cardPadding: CGFloat = 16
     private static let cardSpacing: CGFloat = 12
+    private static let wheelStepThreshold: CGFloat = 42
     private static var cardStripHeight: CGFloat {
         ClipCardView.cardSize.height + cardPadding * 2
     }
@@ -139,7 +141,7 @@ struct HistoryView: View {
                     .onKeyPress(.rightArrow) { moveSelection(by: 1) }
                     .onKeyPress(.upArrow) { switchTab(by: -1) }
                     .onKeyPress(.downArrow) { switchTab(by: 1) }
-                    .onKeyPress(phases: .down) { handleSearchKey($0) }
+                    .onKeyPress(phases: [.down, .repeat]) { handleSearchKey($0) }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
@@ -255,6 +257,11 @@ struct HistoryView: View {
                         .padding(Self.cardPadding)
                     }
                     .frame(height: Self.cardStripHeight, alignment: .top)
+                    .background {
+                        HorizontalWheelScrollMonitor { delta in
+                            handleWheelScroll(delta)
+                        }
+                    }
                     .onChange(of: selectedIndex) { _, newIndex in
                         guard visibleItems.indices.contains(newIndex) else { return }
                         withAnimation(.easeOut(duration: 0.15)) {
@@ -269,7 +276,7 @@ struct HistoryView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isGridFocused)
-        .onKeyPress(phases: .down) { handleGridKey($0) }
+        .onKeyPress(phases: [.down, .repeat]) { handleGridKey($0) }
     }
 
     private func card(for item: ClipItem, at index: Int) -> some View {
@@ -296,8 +303,12 @@ struct HistoryView: View {
         Divider()
         Menu("Add to Page") {
             ForEach(pinboards, id: \.persistentModelID) { board in
-                Button(board.displayName) { store.assign(item, to: board) }
-                    .disabled(item.pinboard?.persistentModelID == board.persistentModelID)
+                Button {
+                    store.assign(item, to: board)
+                } label: {
+                    Label(board.displayName, systemImage: board.iconName)
+                }
+                .disabled(item.pinboard?.persistentModelID == board.persistentModelID)
             }
             if !pinboards.isEmpty {
                 Divider()
@@ -340,7 +351,7 @@ struct HistoryView: View {
             return ("magnifyingglass", "No clips match \u{201C}\(query)\u{201D}", "Try a different search.")
         }
         if let selectedBoard {
-            return ("square.grid.2x2", "\(selectedBoard.displayName) is empty",
+            return (selectedBoard.iconName, "\(selectedBoard.displayName) is empty",
                     "Right-click any clip to save it to this page.")
         }
         return ("doc.on.clipboard", "Copy something to get started",
@@ -445,6 +456,16 @@ struct HistoryView: View {
         return .handled
     }
 
+    private func handleWheelScroll(_ delta: CGFloat) {
+        guard !visibleItems.isEmpty else { return }
+        wheelAccumulator += delta
+        while abs(wheelAccumulator) >= Self.wheelStepThreshold {
+            let step = wheelAccumulator > 0 ? 1 : -1
+            _ = moveSelection(by: step)
+            wheelAccumulator -= CGFloat(step) * Self.wheelStepThreshold
+        }
+    }
+
     private func pasteSelected() -> KeyPress.Result {
         guard visibleItems.indices.contains(selectedIndex) else { return .ignored }
         onPaste(visibleItems[selectedIndex])
@@ -466,7 +487,72 @@ struct HistoryView: View {
         isSearchExpanded = false
         isSearchFocused = false
         selectedIndex = 0
+        wheelAccumulator = 0
         validateSelectedTab()
         focusGrid()
+    }
+}
+
+private struct HorizontalWheelScrollMonitor: NSViewRepresentable {
+    let onScroll: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> WheelMonitorView {
+        let view = WheelMonitorView()
+        view.onScroll = onScroll
+        return view
+    }
+
+    func updateNSView(_ nsView: WheelMonitorView, context: Context) {
+        nsView.onScroll = onScroll
+    }
+
+    static func dismantleNSView(_ nsView: WheelMonitorView, coordinator: ()) {
+        nsView.uninstall()
+    }
+
+    final class WheelMonitorView: NSView {
+        var onScroll: ((CGFloat) -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil {
+                uninstall()
+            } else {
+                install()
+            }
+        }
+
+        deinit {
+            uninstall()
+        }
+
+        func uninstall() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        private func install() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, let window = self.window else { return event }
+                let point = self.convert(event.locationInWindow, from: nil)
+                guard self.bounds.contains(point), window.isKeyWindow else { return event }
+
+                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                guard !flags.contains(.command) else { return event }
+
+                let horizontal = event.scrollingDeltaX
+                let vertical = event.scrollingDeltaY
+                let rawDelta = abs(horizontal) > abs(vertical) ? horizontal : -vertical
+                guard rawDelta != 0 else { return event }
+
+                let normalizedDelta = event.hasPreciseScrollingDeltas ? rawDelta : rawDelta * 24
+                self.onScroll?(normalizedDelta)
+                return nil
+            }
+        }
     }
 }

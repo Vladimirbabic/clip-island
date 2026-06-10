@@ -8,6 +8,7 @@ import SwiftData
 final class Pinboard {
     var name: String = ""
     var colorName: String = "magenta"
+    var iconName: String = "square.grid.2x2"
     var sortOrder: Int = 0
     var createdAt: Date = Date()
     /// Deterministic tie-breaker for cross-device ordering and merges.
@@ -16,9 +17,15 @@ final class Pinboard {
     @Relationship(deleteRule: .nullify, inverse: \ClipItem.pinboard)
     var items: [ClipItem]?
 
-    init(name: String, colorName: String = "magenta", sortOrder: Int = 0) {
+    init(
+        name: String,
+        colorName: String = "magenta",
+        iconName: String = "square.grid.2x2",
+        sortOrder: Int = 0
+    ) {
         self.name = name
         self.colorName = colorName
+        self.iconName = iconName
         self.sortOrder = sortOrder
     }
 

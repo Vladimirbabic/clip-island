@@ -83,6 +83,31 @@ final class ClipStore: ObservableObject {
         save()
     }
 
+    /// Attaches an asynchronously generated preview image to a file clip.
+    /// File paths can sync to iOS, but the underlying macOS file cannot, so
+    /// image files need a compact persisted preview to render cross-device.
+    func updateFilePreview(contentHash: String, imageData: Data?) {
+        guard let imageData, imageData.count <= AppConstants.maxImageByteCount else { return }
+        do {
+            var descriptor = FetchDescriptor<ClipItem>(
+                predicate: #Predicate { $0.contentHash == contentHash },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = 1
+            guard
+                let item = try context.fetch(descriptor).first,
+                item.kind == .file,
+                !item.isDeleted,
+                item.imageData == nil
+            else { return }
+
+            item.imageData = imageData
+            try context.save()
+        } catch {
+            logger.error("Failed to update file preview: \(error)")
+        }
+    }
+
     // MARK: - Pruning
 
     /// Saves, then prunes oldest prunable items beyond the *synced* history

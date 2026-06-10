@@ -90,6 +90,7 @@ struct SettingsSheet: View {
         Section("iCloud Sync") {
             Label(syncStatus.statusText, systemImage: syncStatus.state.systemImageName)
                 .foregroundStyle(syncStatus.state.isSyncing ? Color.primary : Color.secondary)
+            LabeledContent("Freshness", value: syncStatus.freshnessText)
         }
     }
 

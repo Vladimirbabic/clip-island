@@ -70,9 +70,9 @@ struct PinboardChipsRow: View {
             selectedBoardID = board.persistentModelID
         } label: {
             chipLabel(isSelected: isSelected) {
-                Circle()
-                    .fill(PinboardColor.color(named: board.colorName))
-                    .frame(width: 9, height: 9)
+                Image(systemName: board.iconName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PinboardColor.color(named: board.colorName))
                 Text(board.displayName)
             }
         }
@@ -86,11 +86,29 @@ struct PinboardChipsRow: View {
                 Label("Rename…", systemImage: "pencil")
             }
             colorMenu(for: board)
+            iconMenu(for: board)
             Button(role: .destructive) {
                 deleteTarget = board
             } label: {
                 Label("Delete Page…", systemImage: "trash")
             }
+        }
+    }
+
+    private func iconMenu(for board: Pinboard) -> some View {
+        Menu {
+            ForEach(AppConstants.pinboardIconNames, id: \.self) { iconName in
+                Button {
+                    store.setPinboardIcon(board, iconName: iconName)
+                } label: {
+                    Label(
+                        iconDisplayName(iconName),
+                        systemImage: board.iconName == iconName ? "checkmark" : iconName
+                    )
+                }
+            }
+        } label: {
+            Label("Icon", systemImage: board.iconName)
         }
     }
 
@@ -157,5 +175,12 @@ struct PinboardChipsRow: View {
         }
         store.deletePinboard(board)
         deleteTarget = nil
+    }
+
+    private func iconDisplayName(_ iconName: String) -> String {
+        iconName
+            .replacingOccurrences(of: ".", with: " ")
+            .replacingOccurrences(of: "2x2", with: "grid")
+            .capitalized
     }
 }

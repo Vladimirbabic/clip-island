@@ -159,6 +159,7 @@ struct SettingsView: View {
                 Label(syncShortLabel, systemImage: syncSymbolName)
                     .foregroundStyle(syncLabelColor)
             }
+            LabeledContent("Freshness", value: syncStatus.freshnessText)
             Text(syncStatus.statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)

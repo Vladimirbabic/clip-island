@@ -11,8 +11,23 @@ enum IOSSettingsKeys {
     static let lastImportedChangeCount = "lastImportedChangeCount"
 }
 
+final class ClipStoryIOSAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        application.registerForRemoteNotifications()
+        return true
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        application.registerForRemoteNotifications()
+    }
+}
+
 @main
 struct ClipStoryiOSApp: App {
+    @UIApplicationDelegateAdaptor(ClipStoryIOSAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(IOSSettingsKeys.autoImportClipboard) private var autoImportClipboard = false
     @AppStorage(IOSSettingsKeys.lastImportedChangeCount) private var lastImportedChangeCount = -1
@@ -37,6 +52,7 @@ struct ClipStoryiOSApp: App {
         .modelContainer(persistence.container)
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
+            syncStatus.refresh()
             store.dedupeSweep()
             importCurrentClipboardIfNeeded()
         }

@@ -91,9 +91,9 @@ struct PinboardTabStrip: View {
         } else {
             tabButton(isSelected: selection == .board(id), action: { selection = .board(id) }) {
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(PinboardPalette.color(for: board.colorName))
-                        .frame(width: 9, height: 9)
+                    Image(systemName: board.iconName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(PinboardPalette.color(for: board.colorName))
                     Text(board.displayName)
                 }
             }
@@ -115,6 +115,19 @@ struct PinboardTabStrip: View {
                         }
                     }
                 }
+                Menu("Icon") {
+                    ForEach(AppConstants.pinboardIconNames, id: \.self) { iconName in
+                        Button {
+                            store.setPinboardIcon(board, iconName: iconName)
+                        } label: {
+                            Label {
+                                Text(Self.iconDisplayName(iconName))
+                            } icon: {
+                                Image(systemName: board.iconName == iconName ? "checkmark" : iconName)
+                            }
+                        }
+                    }
+                }
                 Divider()
                 Button("Delete Page\u{2026}", role: .destructive) { boardPendingDelete = board }
             }
@@ -123,9 +136,9 @@ struct PinboardTabStrip: View {
 
     private func renameField(for board: Pinboard) -> some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(PinboardPalette.color(for: board.colorName))
-                .frame(width: 9, height: 9)
+            Image(systemName: board.iconName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(PinboardPalette.color(for: board.colorName))
             TextField("Name", text: $renameText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5, weight: .medium))
@@ -244,5 +257,12 @@ struct PinboardTabStrip: View {
             }
             return true
         }
+    }
+
+    private static func iconDisplayName(_ iconName: String) -> String {
+        iconName
+            .replacingOccurrences(of: ".", with: " ")
+            .replacingOccurrences(of: "2x2", with: "grid")
+            .capitalized
     }
 }

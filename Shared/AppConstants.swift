@@ -29,4 +29,24 @@ enum AppConstants {
     static let pinboardColorNames = [
         "magenta", "blue", "purple", "orange", "teal", "pink", "indigo", "red", "yellow", "green",
     ]
+
+    /// SF Symbol names available as Page/Pinboard icons.
+    static let pinboardIconNames = [
+        "square.grid.2x2",
+        "sparkles",
+        "terminal",
+        "curlybraces",
+        "doc.text",
+        "link",
+        "photo",
+        "folder",
+        "bookmark",
+        "pin",
+        "star",
+        "bolt",
+        "hammer",
+        "paintpalette",
+        "briefcase",
+        "person.2",
+    ]
 }

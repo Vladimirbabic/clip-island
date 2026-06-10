@@ -29,8 +29,13 @@ enum ClipboardWriter {
                 didWrite = false
             }
         case .file:
-            // File contents never sync; the name is the best we can offer.
-            didWrite = write(text: item.fileName, to: pasteboard)
+            if let data = item.imageData, let image = UIImage(data: data) {
+                pasteboard.image = image
+                didWrite = true
+            } else {
+                // Non-image file contents never sync; the name is the best we can offer.
+                didWrite = write(text: item.fileName, to: pasteboard)
+            }
         }
 
         if didWrite {

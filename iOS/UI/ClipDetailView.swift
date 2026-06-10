@@ -78,7 +78,7 @@ struct ClipDetailView: View {
                 isShowingNewBoardAlert = true
             }
         } label: {
-            Image(systemName: "square.grid.2x2")
+            Image(systemName: item.pinboard?.iconName ?? "square.grid.2x2")
         }
         .accessibilityLabel("Page")
     }
@@ -106,12 +106,26 @@ struct ClipDetailView: View {
                     .foregroundStyle(.secondary)
             }
         case .file:
+            if let data = item.imageData, let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .listRowInsets(EdgeInsets())
+            }
             Label(item.fileName ?? "File", systemImage: item.kind.systemImageName)
                 .font(.body)
-            Text("File contents stay on the Mac where this clip was captured. Only the file reference syncs to this device.")
+            Text(fileDetailMessage)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var fileDetailMessage: String {
+        if item.imageData != nil {
+            return "A preview image synced from the Mac. The original file remains on the Mac where it was captured."
+        }
+        return "File contents stay on the Mac where this clip was captured. Only the file reference syncs to this device."
     }
 
     /// Links with macOS-fetched metadata lead with preview image and title;

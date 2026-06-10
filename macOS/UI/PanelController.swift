@@ -39,8 +39,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     private static let panelHeight: CGFloat = 324
     private static let cornerRadiusFull: CGFloat = 24
     private static let cornerRadiusNotch: CGFloat = 10
-    private static let openDuration: CFTimeInterval = 0.26
-    private static let closeDuration: CFTimeInterval = 0.18
+    private static let openDuration: CFTimeInterval = 0.34
+    private static let closeDuration: CFTimeInterval = 0.22
+    private static let contentFadeInDuration: CFTimeInterval = 0.20
+    private static let contentFadeOutDuration: CFTimeInterval = 0.11
+    private static let openTiming = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.20, 1.00)
+    private static let closeTiming = CAMediaTimingFunction(controlPoints: 0.55, 0.00, 0.90, 0.60)
+    private static let fadeTiming = CAMediaTimingFunction(controlPoints: 0.25, 0.85, 0.25, 1.00)
 
     private let panel: HistoryPanel
     private let store: ClipStore
@@ -131,9 +136,15 @@ final class PanelController: NSObject, NSWindowDelegate {
                 cornerRadius: Self.cornerRadiusFull,
                 animated: true,
                 duration: Self.openDuration,
-                timing: .easeOut
+                timing: Self.openTiming
             )
-            setContentVisible(true, animated: true, duration: 0.16, delay: Self.openDuration * 0.4)
+            setContentVisible(
+                true,
+                animated: true,
+                duration: Self.contentFadeInDuration,
+                delay: Self.openDuration * 0.26,
+                timing: Self.fadeTiming
+            )
         }
 
         DispatchQueue.main.async {
@@ -157,7 +168,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             cornerRadius: Self.cornerRadiusNotch,
             animated: true,
             duration: Self.closeDuration,
-            timing: .easeIn
+            timing: Self.closeTiming
         ) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.isHiding else { return }
@@ -266,6 +277,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         // Bottom corners are rounded; the top stays flush with the screen edge.
         maskLayer.backgroundColor = NSColor.black.cgColor
         maskLayer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        maskLayer.allowsEdgeAntialiasing = true
+        maskLayer.edgeAntialiasingMask = [
+            .layerLeftEdge, .layerRightEdge, .layerBottomEdge, .layerTopEdge,
+        ]
         maskLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         containerView.layer?.mask = maskLayer
 
@@ -300,7 +315,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         cornerRadius: CGFloat,
         animated: Bool,
         duration: CFTimeInterval = 0,
-        timing: CAMediaTimingFunctionName = .easeOut,
+        timing: CAMediaTimingFunction = CAMediaTimingFunction(name: .easeOut),
         completion: (() -> Void)? = nil
     ) {
         let newBounds = CGRect(origin: .zero, size: rect.size)
@@ -323,7 +338,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         let oldBounds = presentation?.bounds ?? maskLayer.bounds
         let oldPosition = presentation?.position ?? maskLayer.position
         let oldRadius = presentation?.cornerRadius ?? maskLayer.cornerRadius
-        let timingFunction = CAMediaTimingFunction(name: timing)
 
         CATransaction.begin()
         CATransaction.setCompletionBlock(completion)
@@ -332,9 +346,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         maskLayer.position = newPosition
         maskLayer.cornerRadius = cornerRadius
 
-        maskLayer.add(basicAnimation("bounds", from: NSValue(rect: oldBounds), to: NSValue(rect: newBounds), duration: duration, timing: timingFunction), forKey: "bounds")
-        maskLayer.add(basicAnimation("position", from: NSValue(point: oldPosition), to: NSValue(point: newPosition), duration: duration, timing: timingFunction), forKey: "position")
-        maskLayer.add(basicAnimation("cornerRadius", from: oldRadius, to: cornerRadius, duration: duration, timing: timingFunction), forKey: "cornerRadius")
+        maskLayer.add(basicAnimation("bounds", from: NSValue(rect: oldBounds), to: NSValue(rect: newBounds), duration: duration, timing: timing), forKey: "bounds")
+        maskLayer.add(basicAnimation("position", from: NSValue(point: oldPosition), to: NSValue(point: newPosition), duration: duration, timing: timing), forKey: "position")
+        maskLayer.add(basicAnimation("cornerRadius", from: oldRadius, to: cornerRadius, duration: duration, timing: timing), forKey: "cornerRadius")
         CATransaction.commit()
     }
 
@@ -357,7 +371,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         _ visible: Bool,
         animated: Bool,
         duration: CFTimeInterval = 0,
-        delay: CFTimeInterval = 0
+        delay: CFTimeInterval = 0,
+        timing: CAMediaTimingFunction = CAMediaTimingFunction(name: .easeOut)
     ) {
         guard let layer = hostingView?.layer else { return }
         let target: Float = visible ? 1 : 0
@@ -382,7 +397,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         animation.duration = duration
         animation.beginTime = CACurrentMediaTime() + delay
         animation.fillMode = .backwards
-        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        animation.timingFunction = timing
         layer.add(animation, forKey: "opacity")
     }
 
