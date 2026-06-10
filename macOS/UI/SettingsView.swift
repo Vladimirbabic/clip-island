@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var launchAtLoginError: String?
     @State private var isAccessibilityTrusted = PasteService.isAccessibilityTrusted
     @State private var isShowingClearConfirmation = false
+    @State private var selectedPane: SettingsPane = .general
     /// `ClipStore` does not publish changes; bump this after writes so
     /// captions that read store state (synced limit) refresh.
     @State private var settingsRevision = 0
@@ -34,21 +35,22 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                generalSection
-                permissionsSection
-                syncSection
-                achievementsSection
-                dataSection
-                aboutSection
+        HStack(spacing: 0) {
+            sidebar
+
+            Rectangle()
+                .fill(SettingsTheme.divider)
+                .frame(width: 1)
+
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 18) {
+                    selectedPaneSection
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 22)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
         }
-        .frame(width: 560)
-        .frame(minHeight: 640)
+        .frame(width: 760, height: 600)
         .background(SettingsTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .tint(SettingsTheme.accent)
@@ -70,29 +72,75 @@ struct SettingsView: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sidebarHeader
+
+            VStack(spacing: 4) {
+                ForEach(SettingsPane.allCases) { pane in
+                    SidebarItemButton(
+                        pane: pane,
+                        isSelected: selectedPane == pane
+                    ) {
+                        selectedPane = pane
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Sync")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(SettingsTheme.mutedText)
+                    .textCase(.uppercase)
+                StatusPill(title: syncShortLabel, systemImage: syncSymbolName, color: syncLabelColor)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 18)
+        .frame(width: 206)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(SettingsTheme.sidebarFill)
+    }
+
+    private var sidebarHeader: some View {
+        HStack(alignment: .center, spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(SettingsTheme.accent.opacity(0.18))
                 Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(SettingsTheme.accent)
             }
-            .frame(width: 46, height: 46)
+            .frame(width: 38, height: 38)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("ClipStory")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(SettingsTheme.primaryText)
                 Text("Settings")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(SettingsTheme.secondaryText)
             }
+        }
+    }
 
-            Spacer(minLength: 16)
-
-            StatusPill(title: syncShortLabel, systemImage: syncSymbolName, color: syncLabelColor)
+    @ViewBuilder
+    private var selectedPaneSection: some View {
+        switch selectedPane {
+        case .general:
+            generalSection
+        case .permissions:
+            permissionsSection
+        case .sync:
+            syncSection
+        case .progress:
+            achievementsSection
+        case .data:
+            dataSection
+        case .about:
+            aboutSection
         }
     }
 
@@ -378,8 +426,53 @@ struct SettingsView: View {
 
 // MARK: - Settings Components
 
+private enum SettingsPane: String, CaseIterable, Identifiable {
+    case general
+    case permissions
+    case sync
+    case progress
+    case data
+    case about
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .permissions: return "Permissions"
+        case .sync: return "Sync"
+        case .progress: return "Progress"
+        case .data: return "Data"
+        case .about: return "About"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: return "slider.horizontal.3"
+        case .permissions: return "hand.raised.fill"
+        case .sync: return "icloud.fill"
+        case .progress: return "rosette"
+        case .data: return "externaldrive.fill"
+        case .about: return "info.circle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general: return .blue
+        case .permissions: return .green
+        case .sync: return .green
+        case .progress: return SettingsTheme.accent
+        case .data: return .cyan
+        case .about: return SettingsTheme.secondaryText
+        }
+    }
+}
+
 private enum SettingsTheme {
     static let background = Color.black
+    static let sidebarFill = Color(red: 0x0B / 255, green: 0x0B / 255, blue: 0x0D / 255)
     static let sectionFill = Color(red: 0x10 / 255, green: 0x10 / 255, blue: 0x12 / 255)
     static let rowFill = Color(red: 0x18 / 255, green: 0x18 / 255, blue: 0x1A / 255)
     static let stroke = Color.white.opacity(0.07)
@@ -388,6 +481,41 @@ private enum SettingsTheme {
     static let secondaryText = Color.white.opacity(0.58)
     static let mutedText = Color.white.opacity(0.38)
     static let accent = Color(red: 0.78, green: 0.22, blue: 0.88)
+}
+
+private struct SidebarItemButton: View {
+    let pane: SettingsPane
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: pane.systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isSelected ? pane.tint : SettingsTheme.secondaryText)
+                    .frame(width: 18)
+                Text(pane.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isSelected ? SettingsTheme.primaryText : SettingsTheme.secondaryText)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.10) : Color.clear)
+            }
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct SettingsSection<Content: View>: View {
