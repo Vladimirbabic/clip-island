@@ -32,15 +32,17 @@ enum ModelContainerFactory {
     /// (e.g. when running without signing/entitlements), and finally to
     /// in-memory so the app never fails to launch.
     static func makeShared() -> PersistenceSetup {
-        do {
-            let cloudConfiguration = ModelConfiguration(
-                schema: schema,
-                cloudKitDatabase: .private(cloudKitContainerID)
-            )
-            let container = try ModelContainer(for: schema, configurations: [cloudConfiguration])
-            return PersistenceSetup(container: container, mode: .cloudKit)
-        } catch {
-            logger.error("CloudKit-backed store unavailable, falling back to local: \(error)")
+        if hasCloudKitEntitlement() {
+            do {
+                let cloudConfiguration = ModelConfiguration(
+                    schema: schema,
+                    cloudKitDatabase: .private(cloudKitContainerID)
+                )
+                let container = try ModelContainer(for: schema, configurations: [cloudConfiguration])
+                return PersistenceSetup(container: container, mode: .cloudKit)
+            } catch {
+                logger.error("CloudKit-backed store unavailable, falling back to local: \(error)")
+            }
         }
 
         do {
@@ -56,6 +58,18 @@ enum ModelContainerFactory {
         } catch {
             fatalError("Unable to create any SwiftData container: \(error)")
         }
+    }
+
+    /// CKContainer creation hits a fatal trap (not a catchable error) when
+    /// the process lacks the iCloud entitlement — so check the entitlement
+    /// itself and never touch CloudKit without it. Unsigned or team-less
+    /// builds then degrade to local-only instead of crashing.
+    private static func hasCloudKitEntitlement() -> Bool {
+        let entitled = EntitlementChecker.hasICloudContainerEntitlement()
+        if !entitled {
+            logger.error("No iCloud entitlement in this build — using local-only storage")
+        }
+        return entitled
     }
 
     /// In-memory container for unit tests, previews, and demo mode.
