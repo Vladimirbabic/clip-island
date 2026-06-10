@@ -69,6 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.panelController?.show()
             }
         }
+
+        if arguments.contains("--show-settings") {
+            DispatchQueue.main.async {
+                SettingsOpener.open()
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

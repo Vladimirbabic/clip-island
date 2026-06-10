@@ -34,16 +34,24 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        Form {
-            generalSection
-            permissionsSection
-            syncSection
-            achievementsSection
-            dataSection
-            aboutSection
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                generalSection
+                permissionsSection
+                syncSection
+                achievementsSection
+                dataSection
+                aboutSection
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
         }
-        .formStyle(.grouped)
-        .frame(width: 460)
+        .frame(width: 560)
+        .frame(minHeight: 640)
+        .background(SettingsTheme.background.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .tint(SettingsTheme.accent)
         .onAppear {
             launchAtLogin = LaunchAtLogin.isEnabled
             loginItemStatus = LaunchAtLogin.status
@@ -62,42 +70,103 @@ struct SettingsView: View {
         }
     }
 
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SettingsTheme.accent.opacity(0.18))
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(SettingsTheme.accent)
+            }
+            .frame(width: 46, height: 46)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ClipStory")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(SettingsTheme.primaryText)
+                Text("Settings")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
+
+            Spacer(minLength: 16)
+
+            StatusPill(title: syncShortLabel, systemImage: syncSymbolName, color: syncLabelColor)
+        }
+    }
+
     // MARK: - General
 
     private var generalSection: some View {
-        Section("General") {
-            Toggle("Launch at login", isOn: launchAtLoginBinding)
-            if let launchAtLoginError {
-                Label(launchAtLoginError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+        SettingsSection(title: "General", systemImage: "slider.horizontal.3", tint: .blue) {
+            SettingsRow(
+                title: "Launch at login",
+                subtitle: loginItemStatus == .requiresApproval ? "Waiting for approval in Login Items." : "Start ClipStory when you sign in.",
+                systemImage: "power",
+                tint: .green
+            ) {
+                Toggle("", isOn: launchAtLoginBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
             }
+
+            if let launchAtLoginError {
+                SettingsDivider()
+                MessageRow(launchAtLoginError, systemImage: "exclamationmark.triangle.fill", tint: .orange)
+            }
+
             if loginItemStatus == .requiresApproval {
-                HStack {
-                    Text("Waiting for your approval in Login Items.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Open Login Items Settings") {
-                        LaunchAtLogin.openLoginItemsSettings()
+                SettingsDivider()
+                ActionRow(
+                    title: "Login Items approval",
+                    subtitle: "macOS needs approval before ClipStory can launch automatically.",
+                    systemImage: "gear.badge",
+                    tint: .orange,
+                    buttonTitle: "Open Settings"
+                ) {
+                    LaunchAtLogin.openLoginItemsSettings()
+                }
+            }
+
+            SettingsDivider()
+
+            SettingsRow(
+                title: "Pause clipboard capture",
+                subtitle: "Temporarily stop saving new clipboard items.",
+                systemImage: "pause.circle",
+                tint: .orange
+            ) {
+                Toggle("", isOn: $isCapturePaused)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+
+            SettingsDivider()
+
+            SettingsRow(
+                title: "History limit",
+                subtitle: "Pinned clips and saved pages are never removed.",
+                systemImage: "clock.arrow.circlepath",
+                tint: .purple
+            ) {
+                Picker("", selection: historyLimitBinding) {
+                    ForEach(AppConstants.historyLimitChoices, id: \.self) { limit in
+                        Text("\(limit) items").tag(limit)
                     }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 118)
             }
 
-            Toggle("Pause clipboard capture", isOn: $isCapturePaused)
-
-            Picker("History limit", selection: historyLimitBinding) {
-                ForEach(AppConstants.historyLimitChoices, id: \.self) { limit in
-                    Text("\(limit) items").tag(limit)
-                }
-            }
-            Text("History keeps the newest \(store.historyLimit) unsaved clips. Pinned clips and saved pages are never removed.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             if !store.hasSyncedHistoryLimit {
-                Text("Pruning is inactive until you choose a limit (synced across devices).")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                SettingsDivider()
+                MessageRow(
+                    "Pruning is inactive until you choose a limit synced across devices.",
+                    systemImage: "icloud.and.arrow.up",
+                    tint: .orange
+                )
             }
         }
     }
@@ -135,39 +204,50 @@ struct SettingsView: View {
     // MARK: - Permissions
 
     private var permissionsSection: some View {
-        Section("Permissions") {
-            LabeledContent("Accessibility") {
+        SettingsSection(title: "Permissions", systemImage: "hand.raised.fill", tint: .green) {
+            SettingsRow(
+                title: "Accessibility",
+                subtitle: "Required only for automatic paste into other apps.",
+                systemImage: "checkmark.shield",
+                tint: isAccessibilityTrusted ? .green : .orange
+            ) {
                 if isAccessibilityTrusted {
-                    Label("Granted", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                    StatusPill(title: "Granted", systemImage: "checkmark.circle.fill", color: .green)
                 } else {
-                    HStack(spacing: 8) {
-                        Text("Not granted")
-                            .foregroundStyle(.secondary)
-                        Button("Grant\u{2026}") {
-                            PasteService.requestAccessibilityAccess()
-                        }
+                    Button("Grant...") {
+                        PasteService.requestAccessibilityAccess()
                     }
+                    .buttonStyle(SettingsButtonStyle())
                 }
             }
-            Text("Without Accessibility access, ClipStory still copies the selected clip but cannot paste it into other apps automatically.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
     // MARK: - Sync
 
     private var syncSection: some View {
-        Section("Sync") {
-            LabeledContent("iCloud Sync") {
-                Label(syncShortLabel, systemImage: syncSymbolName)
-                    .foregroundStyle(syncLabelColor)
+        SettingsSection(title: "Sync", systemImage: "icloud.fill", tint: syncLabelColor) {
+            SettingsRow(
+                title: "iCloud Sync",
+                subtitle: syncStatus.statusText,
+                systemImage: syncSymbolName,
+                tint: syncLabelColor
+            ) {
+                StatusPill(title: syncShortLabel, systemImage: syncSymbolName, color: syncLabelColor)
             }
-            LabeledContent("Freshness", value: syncStatus.freshnessText)
-            Text(syncStatus.statusText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+            SettingsDivider()
+
+            SettingsRow(
+                title: "Freshness",
+                subtitle: "Last observed CloudKit activity.",
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: .blue
+            ) {
+                Text(syncStatus.freshnessText)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
         }
     }
 
@@ -193,7 +273,7 @@ struct SettingsView: View {
         switch syncStatus.state {
         case .syncing: return .green
         case .noAccount: return .orange
-        case .localOnly: return .secondary
+        case .localOnly: return SettingsTheme.secondaryText
         case .ephemeral: return .red
         }
     }
@@ -203,30 +283,88 @@ struct SettingsView: View {
     private var achievementsSection: some View {
         let achievements = AchievementCatalog.achievements(items: items, pinboards: pinboards)
         let unlocked = achievements.filter(\.isUnlocked).count
-        return Section("Progress") {
-            LabeledContent("Achievements", value: "\(unlocked) / \(achievements.count)")
-            ForEach(achievements.prefix(4)) { achievement in
-                Label(achievement.title, systemImage: achievement.isUnlocked ? "checkmark.circle.fill" : "lock")
-                    .foregroundStyle(achievement.isUnlocked ? .primary : .secondary)
+
+        return SettingsSection(title: "Progress", systemImage: "rosette", tint: SettingsTheme.accent) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    IconBadge(systemImage: "sparkles", tint: SettingsTheme.accent)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Achievements")
+                                .font(.system(size: 13.5, weight: .semibold))
+                                .foregroundStyle(SettingsTheme.primaryText)
+                            Spacer()
+                            Text("\(unlocked) / \(achievements.count)")
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(SettingsTheme.secondaryText)
+                        }
+                        ProgressView(value: Double(unlocked), total: Double(max(achievements.count, 1)))
+                            .progressViewStyle(.linear)
+                            .tint(SettingsTheme.accent)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+
+                VStack(spacing: 8) {
+                    ForEach(achievements.prefix(4)) { achievement in
+                        AchievementRow(achievement: achievement)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
             }
         }
     }
 
     private var dataSection: some View {
-        Section("Data") {
-            Button("Export JSON\u{2026}") {
+        SettingsSection(title: "Data", systemImage: "externaldrive.fill", tint: .cyan) {
+            ActionRow(
+                title: "Export JSON",
+                subtitle: "Save clips and pages to a local archive.",
+                systemImage: "square.and.arrow.up",
+                tint: .cyan,
+                buttonTitle: "Export"
+            ) {
                 ClipExporter.exportJSON(items: items, pinboards: pinboards)
             }
-            Button("Clear Unsaved History\u{2026}", role: .destructive) {
+
+            SettingsDivider()
+
+            ActionRow(
+                title: "Clear Unsaved History",
+                subtitle: "Pinned clips and saved pages are kept.",
+                systemImage: "trash",
+                tint: .red,
+                buttonTitle: "Clear",
+                isDestructive: true
+            ) {
                 isShowingClearConfirmation = true
             }
         }
     }
 
     private var aboutSection: some View {
-        Section("About") {
-            LabeledContent("Version", value: versionText)
-            LabeledContent("Hotkey", value: "\u{21E7}\u{2318}V opens the history panel")
+        SettingsSection(title: "About", systemImage: "info.circle.fill", tint: .gray) {
+            SettingsRow(
+                title: "Version",
+                subtitle: versionText,
+                systemImage: "number",
+                tint: SettingsTheme.secondaryText
+            ) {
+                EmptyView()
+            }
+
+            SettingsDivider()
+
+            SettingsRow(
+                title: "Hotkey",
+                subtitle: "\u{21E7}\u{2318}V opens the history panel.",
+                systemImage: "keyboard",
+                tint: SettingsTheme.secondaryText
+            ) {
+                EmptyView()
+            }
         }
     }
 
@@ -235,5 +373,233 @@ struct SettingsView: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = info?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
+    }
+}
+
+// MARK: - Settings Components
+
+private enum SettingsTheme {
+    static let background = Color.black
+    static let sectionFill = Color(red: 0x10 / 255, green: 0x10 / 255, blue: 0x12 / 255)
+    static let rowFill = Color(red: 0x18 / 255, green: 0x18 / 255, blue: 0x1A / 255)
+    static let stroke = Color.white.opacity(0.07)
+    static let divider = Color.white.opacity(0.06)
+    static let primaryText = Color.white.opacity(0.92)
+    static let secondaryText = Color.white.opacity(0.58)
+    static let mutedText = Color.white.opacity(0.38)
+    static let accent = Color(red: 0.78, green: 0.22, blue: 0.88)
+}
+
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(SettingsTheme.primaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 0) {
+                content
+            }
+            .background(SettingsTheme.sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(SettingsTheme.stroke, lineWidth: 1)
+            }
+        }
+    }
+}
+
+private struct SettingsRow<Accessory: View>: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+    @ViewBuilder let accessory: Accessory
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            IconBadge(systemImage: systemImage, tint: tint)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(SettingsTheme.primaryText)
+                Text(subtitle)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(SettingsTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 16)
+            accessory
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(SettingsTheme.rowFill.opacity(0.45))
+    }
+}
+
+private struct ActionRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+    let buttonTitle: String
+    var isDestructive = false
+    let action: () -> Void
+
+    var body: some View {
+        SettingsRow(title: title, subtitle: subtitle, systemImage: systemImage, tint: tint) {
+            Button(buttonTitle, action: action)
+                .buttonStyle(SettingsButtonStyle(kind: isDestructive ? .destructive : .normal))
+        }
+    }
+}
+
+private struct MessageRow: View {
+    let message: String
+    let systemImage: String
+    let tint: Color
+
+    init(_ message: String, systemImage: String, tint: Color) {
+        self.message = message
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 22)
+            Text(message)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(SettingsTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(tint.opacity(0.08))
+    }
+}
+
+private struct SettingsDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(SettingsTheme.divider)
+            .frame(height: 1)
+            .padding(.leading, 62)
+    }
+}
+
+private struct IconBadge: View {
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(tint.opacity(0.16))
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+        }
+        .frame(width: 32, height: 32)
+    }
+}
+
+private struct StatusPill: View {
+    let title: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 12, weight: .semibold))
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.14), in: Capsule())
+            .overlay {
+                Capsule().stroke(color.opacity(0.24), lineWidth: 1)
+            }
+    }
+}
+
+private struct AchievementRow: View {
+    let achievement: ClipAchievement
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: achievement.isUnlocked ? "checkmark.circle.fill" : "lock.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(achievement.isUnlocked ? Color.green : SettingsTheme.mutedText)
+                .frame(width: 18)
+            Text(achievement.title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(achievement.isUnlocked ? SettingsTheme.primaryText : SettingsTheme.secondaryText)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct SettingsButtonStyle: ButtonStyle {
+    enum Kind {
+        case normal
+        case destructive
+    }
+
+    var kind: Kind = .normal
+
+    func makeBody(configuration: Configuration) -> some View {
+        let color = kind == .destructive ? Color.red : SettingsTheme.primaryText
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(buttonFill(isPressed: configuration.isPressed), in: Capsule())
+            .overlay {
+                Capsule().stroke(buttonStroke, lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+
+    private func buttonFill(isPressed: Bool) -> Color {
+        switch kind {
+        case .normal:
+            return Color.white.opacity(isPressed ? 0.16 : 0.10)
+        case .destructive:
+            return Color.red.opacity(isPressed ? 0.30 : 0.20)
+        }
+    }
+
+    private var buttonStroke: Color {
+        switch kind {
+        case .normal:
+            return Color.white.opacity(0.12)
+        case .destructive:
+            return Color.red.opacity(0.32)
+        }
     }
 }
