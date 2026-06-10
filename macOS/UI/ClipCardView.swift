@@ -8,7 +8,7 @@ import SwiftUI
 struct ClipCardView: View {
     static let cardSize = CGSize(width: 170, height: 204)
 
-    private static let backgroundColor = Color(red: 0x1E / 255.0, green: 0x1E / 255.0, blue: 0x20 / 255.0)
+    private static let backgroundColor = Color(red: 0x18 / 255.0, green: 0x18 / 255.0, blue: 0x1A / 255.0)
     private static let selectionColor = Color(red: 0x34 / 255.0, green: 0x78 / 255.0, blue: 0xF6 / 255.0)
     /// Above this UTF-8 byte count the footer shows a size, not a character
     /// count (grapheme counting a huge clip on every render is too slow).
