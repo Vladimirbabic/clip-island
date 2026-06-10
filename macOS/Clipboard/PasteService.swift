@@ -122,11 +122,32 @@ final class PasteService {
             .filter { FileManager.default.fileExists(atPath: $0) }
             .map { URL(fileURLWithPath: $0) as NSURL }
 
-        guard !existingURLs.isEmpty else {
-            NSSound.beep()
+        if !existingURLs.isEmpty {
+            pasteboard.writeObjects(existingURLs)
             return
         }
-        pasteboard.writeObjects(existingURLs)
+        if let url = materializedFileURL(for: item) {
+            pasteboard.writeObjects([url as NSURL])
+            return
+        }
+        NSSound.beep()
+    }
+
+    private func materializedFileURL(for item: ClipItem) -> URL? {
+        guard let data = item.fileData, let fileName = item.fileName, !fileName.isEmpty else {
+            return nil
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ClipStoryFiles", isDirectory: true
+        )
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(fileName)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
     }
 
     private nonisolated static func postCommandV() {

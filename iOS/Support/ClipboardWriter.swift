@@ -29,7 +29,10 @@ enum ClipboardWriter {
                 didWrite = false
             }
         case .file:
-            if let data = item.imageData, let image = UIImage(data: data) {
+            if let data = item.fileData {
+                pasteboard.setData(data, forPasteboardType: item.fileTypeIdentifier ?? "public.data")
+                didWrite = true
+            } else if let data = item.imageData, let image = UIImage(data: data) {
                 pasteboard.image = image
                 didWrite = true
             } else {

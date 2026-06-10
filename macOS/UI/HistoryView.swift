@@ -1,6 +1,7 @@
 import AppKit
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Root content of the bottom history panel: a centered search control +
 /// pinboard tab strip on top (with an overflow menu trailing), and a
@@ -24,11 +25,14 @@ struct HistoryView: View {
     @State private var selectedIndex = 0
     @State private var wheelAccumulator: CGFloat = 0
     @State private var isShowingClearConfirmation = false
+    @State private var isShowingManualNoteSheet = false
+    @State private var manualAddErrorMessage = ""
+    @State private var isShowingManualAddError = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isGridFocused: Bool
 
     private static let topBarLeadingWidth: CGFloat = 118
-    private static let topBarTrailingWidth: CGFloat = 26
+    private static let topBarTrailingWidth: CGFloat = 64
     private static let cardPadding: CGFloat = 16
     private static let cardSpacing: CGFloat = 12
     private static let wheelStepThreshold: CGFloat = 42
@@ -100,6 +104,16 @@ struct HistoryView: View {
         } message: {
             Text("Pinned clips and clips saved to pages are kept. This cannot be undone.")
         }
+        .sheet(isPresented: $isShowingManualNoteSheet) {
+            ManualNoteSheet { text in
+                addManualNote(text)
+            }
+        }
+        .alert("Could Not Add Item", isPresented: $isShowingManualAddError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(manualAddErrorMessage)
+        }
     }
 
     // MARK: - Top bar
@@ -116,7 +130,10 @@ struct HistoryView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
-            overflowMenu
+            HStack(spacing: 8) {
+                addMenu
+                overflowMenu
+            }
                 .frame(width: Self.topBarTrailingWidth, alignment: .trailing)
         }
         .padding(.horizontal, 16)
@@ -210,6 +227,23 @@ struct HistoryView: View {
         .opacity(0)
         .frame(width: 0, height: 0)
         .accessibilityHidden(true)
+    }
+
+    private var addMenu: some View {
+        Menu {
+            Button("New Note\u{2026}") { isShowingManualNoteSheet = true }
+            Button("Add File\u{2026}") { chooseManualFile() }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add saved item")
     }
 
     private var overflowMenu: some View {
@@ -472,6 +506,78 @@ struct HistoryView: View {
         return .handled
     }
 
+    private func addManualNote(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            showManualAddError("Write something before saving the note.")
+            return
+        }
+        let content = CapturedContent(
+            kind: .text,
+            text: trimmed,
+            sourceAppName: "ClipStory",
+            sourceAppBundleID: Bundle.main.bundleIdentifier
+        )
+        guard store.insertManual(content, to: selectedBoard) != nil else {
+            showManualAddError("The note could not be saved.")
+            return
+        }
+    }
+
+    private func chooseManualFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            addManualFile(from: url)
+        }
+    }
+
+    private func addManualFile(from url: URL) {
+        do {
+            let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
+            if let fileSize = values.fileSize, fileSize > AppConstants.maxManualFileByteCount {
+                showManualAddError(maxFileSizeMessage)
+                return
+            }
+            let data = try Data(contentsOf: url)
+            guard data.count <= AppConstants.maxManualFileByteCount else {
+                showManualAddError(maxFileSizeMessage)
+                return
+            }
+            let type = values.contentType ?? UTType(filenameExtension: url.pathExtension)
+            let isImage = type?.conforms(to: .image) == true
+            let content = CapturedContent(
+                kind: .file,
+                text: url.path(percentEncoded: false),
+                imageData: isImage ? data : nil,
+                fileData: data,
+                fileName: url.lastPathComponent,
+                fileTypeIdentifier: type?.identifier ?? "public.data",
+                sourceAppName: "ClipStory",
+                sourceAppBundleID: Bundle.main.bundleIdentifier
+            )
+            guard store.insertManual(content, to: selectedBoard) != nil else {
+                showManualAddError("The file could not be saved.")
+                return
+            }
+        } catch {
+            showManualAddError(error.localizedDescription)
+        }
+    }
+
+    private var maxFileSizeMessage: String {
+        "Files larger than \(ByteCountFormatter.string(fromByteCount: Int64(AppConstants.maxManualFileByteCount), countStyle: .file)) cannot be saved yet."
+    }
+
+    private func showManualAddError(_ message: String) {
+        manualAddErrorMessage = message
+        isShowingManualAddError = true
+    }
+
     private func clampSelection() {
         selectedIndex = max(0, min(selectedIndex, visibleItems.count - 1))
     }
@@ -490,6 +596,34 @@ struct HistoryView: View {
         wheelAccumulator = 0
         validateSelectedTab()
         focusGrid()
+    }
+}
+
+private struct ManualNoteSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    let onSave: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TextEditor(text: $text)
+                .font(.body)
+                .frame(width: 440, height: 260)
+                .padding(12)
+            Divider()
+            HStack {
+                Button("Cancel") { dismiss() }
+                Spacer()
+                Button("Save") {
+                    onSave(text)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(12)
+        }
+        .frame(width: 464)
     }
 }
 

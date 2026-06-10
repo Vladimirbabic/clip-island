@@ -14,6 +14,9 @@ enum AppConstants {
     /// Maximum image payload persisted, to keep CloudKit sync snappy. Larger
     /// images are downscaled/re-encoded by the capturing platform code.
     static let maxImageByteCount = 8 * 1024 * 1024
+    /// Maximum full file payload saved manually into ClipStory. Larger files
+    /// should stay as external references until we add real file storage.
+    static let maxManualFileByteCount = 8 * 1024 * 1024
 
     /// Pasteboard type markers that must never be captured: transient data
     /// and concealed content such as password-manager copies. Checked on both

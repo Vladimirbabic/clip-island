@@ -53,6 +53,26 @@ final class ContentHasherTests: XCTestCase {
         XCTAssertNotEqual(first, second)
     }
 
+    func testDifferentManualFileDataProducesDifferentHash() {
+        let first = ContentHasher.hash(
+            kind: .file,
+            text: nil,
+            imageData: nil,
+            fileName: "report.txt",
+            fileData: Data("one".utf8),
+            fileTypeIdentifier: "public.plain-text"
+        )
+        let second = ContentHasher.hash(
+            kind: .file,
+            text: nil,
+            imageData: nil,
+            fileName: "report.txt",
+            fileData: Data("two".utf8),
+            fileTypeIdentifier: "public.plain-text"
+        )
+        XCTAssertNotEqual(first, second)
+    }
+
     // MARK: - nil vs. empty (documented collision)
 
     func testNilAndEmptyTextProduceSameHash() {

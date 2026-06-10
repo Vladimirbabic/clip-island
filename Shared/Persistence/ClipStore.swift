@@ -48,6 +48,27 @@ final class ClipStore: ObservableObject {
         }
     }
 
+    /// Inserts user-created content that did not come from the system
+    /// pasteboard. Manual items are saved content: they are pinned, can be
+    /// assigned directly to a page, and are excluded from clear/prune.
+    @discardableResult
+    func insertManual(_ content: CapturedContent, to board: Pinboard? = nil) -> ClipItem? {
+        do {
+            let item = ClipItem(content: content)
+            item.isPinned = true
+            item.pinboard = board
+            item.sourceAppName = content.sourceAppName ?? "ClipStory"
+            item.sourceAppBundleID = content.sourceAppBundleID
+            item.contentHash = "manual:\(item.dedupID.uuidString):\(content.contentHash)"
+            context.insert(item)
+            try context.save()
+            return item
+        } catch {
+            logger.error("Failed to insert manual clip: \(error)")
+            return nil
+        }
+    }
+
     func togglePin(_ item: ClipItem) {
         item.isPinned.toggle()
         save()

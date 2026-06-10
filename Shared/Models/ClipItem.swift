@@ -12,7 +12,9 @@ final class ClipItem {
     var kindRawValue: String = ClipKind.text.rawValue
     var text: String?
     @Attribute(.externalStorage) var imageData: Data?
+    @Attribute(.externalStorage) var fileData: Data?
     var fileName: String?
+    var fileTypeIdentifier: String?
     var sourceAppName: String?
     var sourceAppBundleID: String?
     var isPinned: Bool = false
@@ -32,7 +34,9 @@ final class ClipItem {
         self.kindRawValue = content.kind.rawValue
         self.text = content.text
         self.imageData = content.imageData
+        self.fileData = content.fileData
         self.fileName = content.fileName
+        self.fileTypeIdentifier = content.fileTypeIdentifier
         self.sourceAppName = content.sourceAppName
         self.sourceAppBundleID = content.sourceAppBundleID
         self.contentHash = content.contentHash

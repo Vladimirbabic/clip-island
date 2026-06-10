@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Root screen: searchable clipboard history synced via iCloud, with saved
 /// pages available from the bottom picker.
@@ -18,6 +19,10 @@ struct HistoryListView: View {
     @State private var selectedBoardID: PersistentIdentifier?
     @State private var isShowingClearConfirmation = false
     @State private var isShowingSettings = false
+    @State private var isShowingManualNoteSheet = false
+    @State private var isShowingFileImporter = false
+    @State private var manualAddErrorMessage = ""
+    @State private var isShowingManualAddError = false
     @State private var isSelecting = false
     @State private var selectedItemIDs = Set<PersistentIdentifier>()
     @State private var detailPath: [PersistentIdentifier] = []
@@ -109,6 +114,22 @@ struct HistoryListView: View {
             }
             .sheet(isPresented: $isShowingSettings) {
                 SettingsSheet()
+            }
+            .sheet(isPresented: $isShowingManualNoteSheet) {
+                ManualNoteSheet { text in
+                    addManualNote(text)
+                }
+            }
+            .fileImporter(
+                isPresented: $isShowingFileImporter,
+                allowedContentTypes: [.item],
+                allowsMultipleSelection: false,
+                onCompletion: handleManualFileImport
+            )
+            .alert("Could Not Add Item", isPresented: $isShowingManualAddError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(manualAddErrorMessage)
             }
             .overlay(alignment: .bottom) {
                 if let copyFeedback {
@@ -377,10 +398,40 @@ struct HistoryListView: View {
 
             pagePicker
 
-            SaveClipboardButton(targetPinboard: selectedBoard, isCircular: true)
+            addMenu
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
+    }
+
+    private var addMenu: some View {
+        Menu {
+            Button {
+                isShowingManualNoteSheet = true
+            } label: {
+                Label("New Note", systemImage: "square.and.pencil")
+            }
+            Button {
+                isShowingFileImporter = true
+            } label: {
+                Label("Add File", systemImage: "doc.badge.plus")
+            }
+            Divider()
+            Button {
+                saveCurrentClipboard()
+            } label: {
+                Label("Save Current Clipboard", systemImage: "doc.on.clipboard")
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 58, height: 58)
+                .background(Color.white.opacity(0.08), in: Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add")
     }
 
     private var pagePicker: some View {
@@ -517,6 +568,101 @@ struct HistoryListView: View {
         isSelecting = false
     }
 
+    private func saveCurrentClipboard() {
+        guard let content = ClipboardReader.readCurrentContent(),
+              let item = store.insert(content) else {
+            showManualAddError("The clipboard is empty or its content could not be saved.")
+            return
+        }
+        if let selectedBoard {
+            store.assign(item, to: selectedBoard)
+        }
+        showSavedFeedback()
+    }
+
+    private func addManualNote(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            showManualAddError("Write something before saving the note.")
+            return
+        }
+        let content = CapturedContent(kind: .text, text: trimmed, sourceAppName: "ClipStory")
+        guard store.insertManual(content, to: selectedBoard) != nil else {
+            showManualAddError("The note could not be saved.")
+            return
+        }
+        showSavedFeedback()
+    }
+
+    private func handleManualFileImport(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            addManualFile(from: url)
+        } catch {
+            showManualAddError(error.localizedDescription)
+        }
+    }
+
+    private func addManualFile(from url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
+            if let fileSize = values.fileSize, fileSize > AppConstants.maxManualFileByteCount {
+                showManualAddError(maxFileSizeMessage)
+                return
+            }
+            let data = try Data(contentsOf: url)
+            guard data.count <= AppConstants.maxManualFileByteCount else {
+                showManualAddError(maxFileSizeMessage)
+                return
+            }
+            let type = values.contentType ?? UTType(filenameExtension: url.pathExtension)
+            let isImage = type?.conforms(to: .image) == true
+            let content = CapturedContent(
+                kind: .file,
+                imageData: isImage ? data : nil,
+                fileData: data,
+                fileName: url.lastPathComponent,
+                fileTypeIdentifier: type?.identifier ?? "public.data",
+                sourceAppName: "ClipStory"
+            )
+            guard store.insertManual(content, to: selectedBoard) != nil else {
+                showManualAddError("The file could not be saved.")
+                return
+            }
+            showSavedFeedback()
+        } catch {
+            showManualAddError(error.localizedDescription)
+        }
+    }
+
+    private var maxFileSizeMessage: String {
+        "Files larger than \(ByteCountFormatter.string(fromByteCount: Int64(AppConstants.maxManualFileByteCount), countStyle: .file)) cannot be saved yet."
+    }
+
+    private func showManualAddError(_ message: String) {
+        manualAddErrorMessage = message
+        isShowingManualAddError = true
+    }
+
+    private func showSavedFeedback() {
+        copyFeedbackDismissal?.cancel()
+        withAnimation {
+            copyFeedback = CopyFeedback(text: "Saved", systemImage: "checkmark.circle.fill")
+        }
+        copyFeedbackDismissal = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            withAnimation { copyFeedback = nil }
+        }
+    }
+
     private func commitNewBoard() {
         guard let item = newBoardItem else { return }
         newBoardItem = nil
@@ -550,6 +696,38 @@ struct HistoryListView: View {
             guard !Task.isCancelled else { return }
             withAnimation { copyFeedback = nil }
         }
+    }
+}
+
+private struct ManualNoteSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    let onSave: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .background(Color.black)
+                .foregroundStyle(.white)
+                .padding()
+                .navigationTitle("New Note")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            onSave(text)
+                            dismiss()
+                        }
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -775,6 +953,9 @@ private struct ClipGridCardView: View {
             guard let data = item.imageData else { return nil }
             return ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
         case .file:
+            if let data = item.fileData {
+                return ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+            }
             if let data = item.imageData {
                 return ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
             }

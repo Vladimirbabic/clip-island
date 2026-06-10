@@ -122,6 +122,9 @@ struct ClipDetailView: View {
     }
 
     private var fileDetailMessage: String {
+        if item.fileData != nil {
+            return "Saved file contents. This item is protected from clearing unsaved clipboard history."
+        }
         if item.imageData != nil {
             return "A preview image synced from the Mac. The original file remains on the Mac where it was captured."
         }

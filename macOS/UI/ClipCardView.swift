@@ -286,7 +286,10 @@ struct ClipCardView: View {
             guard let data = item.imageData else { return nil }
             return ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
         case .file:
-            return nil
+            if let data = item.fileData {
+                return ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+            }
+            return item.fileName
         }
     }
 }

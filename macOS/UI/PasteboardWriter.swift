@@ -43,13 +43,38 @@ enum PasteboardWriter {
     }
 
     private static func writeFile(_ item: ClipItem, to pasteboard: NSPasteboard) {
-        guard let path = item.text, !path.isEmpty else { return }
-        if FileManager.default.fileExists(atPath: path) {
-            pasteboard.writeObjects([URL(fileURLWithPath: path) as NSURL])
-        } else {
+        let paths = (item.text ?? "")
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+        let existingURLs = paths
+            .filter { FileManager.default.fileExists(atPath: $0) }
+            .map { URL(fileURLWithPath: $0) as NSURL }
+
+        if !existingURLs.isEmpty {
+            pasteboard.writeObjects(existingURLs)
+        } else if let url = materializedFileURL(for: item) {
+            pasteboard.writeObjects([url as NSURL])
+        } else if let path = item.text, !path.isEmpty {
             // The file is gone (or lives on another device); the path string
             // still makes the paste useful.
             pasteboard.setString(path, forType: .string)
+        }
+    }
+
+    private static func materializedFileURL(for item: ClipItem) -> URL? {
+        guard let data = item.fileData, let fileName = item.fileName, !fileName.isEmpty else {
+            return nil
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ClipStoryFiles", isDirectory: true
+        )
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(fileName)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
         }
     }
 }

@@ -22,6 +22,11 @@ struct CopyFeedback: Equatable {
     let text: String
     let systemImage: String
 
+    init(text: String, systemImage: String) {
+        self.text = text
+        self.systemImage = systemImage
+    }
+
     init(success: Bool) {
         self.text = success ? "Copied" : "Nothing to copy"
         self.systemImage = success ? "checkmark.circle.fill" : "exclamationmark.circle"
