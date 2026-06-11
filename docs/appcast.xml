@@ -6,6 +6,15 @@
         <description>Release feed for ClipStory macOS updates.</description>
         <language>en</language>
         <item>
+            <title>1.0.14</title>
+            <pubDate>Thu, 11 Jun 2026 13:39:19 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>1.0.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.14/ClipStory-1.0.14.zip" length="4723959" type="application/octet-stream" sparkle:edSignature="c9izORsRvgy6Oe/vXWv1A+zo3yOmycbkV2wOUfoqPUvecI2Uq3nZ2DfvT0jM6G79IPEMKWhYU3m8gQ9rFws1BA=="/>
+        </item>
+        <item>
             <title>1.0.13</title>
             <pubDate>Thu, 11 Jun 2026 12:30:44 +0200</pubDate>
             <link>https://github.com/Vladimirbabic/clip-island</link>
@@ -22,15 +31,6 @@
             <sparkle:shortVersionString>1.0.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.10/ClipStory-1.0.10.zip" length="4716196" type="application/octet-stream" sparkle:edSignature="gGjZQT30GcN+adQjo7V8HaAb6GNlvS2jsc+h6W0KkkgQL7or6WwUgQfkosC+Q1sfc+578IUyGrdFnwtcRxDqAg=="/>
-        </item>
-        <item>
-            <title>1.0.9</title>
-            <pubDate>Thu, 11 Jun 2026 10:56:57 +0200</pubDate>
-            <link>https://github.com/Vladimirbabic/clip-island</link>
-            <sparkle:version>10</sparkle:version>
-            <sparkle:shortVersionString>1.0.9</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.9/ClipStory-1.0.9.zip" length="4666454" type="application/octet-stream" sparkle:edSignature="rI9mzvOyFGbhfUdSDBK7nBVOx6OqX4YV3vHV+3vBnDeAtwMSGJuwL+HDAJRL8eP1Zm5aUtKf3Vbq6i+OnQY9BQ=="/>
         </item>
     </channel>
 </rss>
