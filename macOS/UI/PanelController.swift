@@ -7,17 +7,29 @@ extension Notification.Name {
     /// Posted every time the history panel is presented so the SwiftUI content
     /// can reset search state and refocus the search field.
     static let clipStoryPanelDidShow = Notification.Name("clipStoryPanelDidShow")
+    /// Posted by the NSPanel itself when Return/Enter is pressed. Handling this
+    /// at the window layer avoids SwiftUI focus edge cases in tab controls.
+    static let clipStoryPanelReturnPressed = Notification.Name("clipStoryPanelReturnPressed")
 }
 
 /// Borderless, non-activating panel that becomes key so the search field is
 /// typeable without stealing activation from the frontmost app.
 private final class HistoryPanel: NSPanel {
     var onCancel: (() -> Void)?
+    var onReturn: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
 
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if shouldHandleReturn(event) {
+            onReturn?()
+            return
+        }
+        super.sendEvent(event)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -26,6 +38,13 @@ private final class HistoryPanel: NSPanel {
             return
         }
         super.keyDown(with: event)
+    }
+
+    private func shouldHandleReturn(_ event: NSEvent) -> Bool {
+        guard attachedSheet == nil, event.type == .keyDown else { return false }
+        guard event.keyCode == 36 || event.keyCode == 76 else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags.isDisjoint(with: [.command, .control, .option])
     }
 }
 
@@ -236,6 +255,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.onCancel = { [weak self] in
             self?.hide()
+        }
+        panel.onReturn = {
+            NotificationCenter.default.post(name: .clipStoryPanelReturnPressed, object: nil)
         }
     }
 

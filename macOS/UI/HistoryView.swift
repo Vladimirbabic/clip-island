@@ -122,7 +122,6 @@ struct HistoryView: View {
         // the rounded-bottom bloom shape; keep the content itself transparent.
         .background(Color.clear)
         .background(quickPasteShortcuts)
-        .background(panelKeyMonitor)
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: searchFilters) { _, _ in selectedIndex = 0 }
         .onChange(of: selectedTab) { _, _ in
@@ -136,6 +135,12 @@ struct HistoryView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: Notification.Name("clipStoryPanelDidShow"))
         ) { _ in resetForPresentation() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .clipStoryPanelReturnPressed)
+        ) { _ in
+            guard canUseGlobalPasteShortcuts else { return }
+            _ = pasteSelected()
+        }
         .alert("Clear unsaved history?", isPresented: $isShowingClearConfirmation) {
             Button("Clear Unsaved History", role: .destructive) { store.clearUnpinned() }
             Button("Cancel", role: .cancel) {}
@@ -331,14 +336,6 @@ struct HistoryView: View {
             && !isShowingManualAddError
             && renamingItem == nil
             && editingTextItem == nil
-    }
-
-    private var panelKeyMonitor: some View {
-        PanelKeyMonitor(isEnabled: canUseGlobalPasteShortcuts) {
-            _ = pasteSelected()
-        }
-        .frame(width: 0, height: 0)
-        .accessibilityHidden(true)
     }
 
     private var addMenu: some View {
@@ -838,69 +835,6 @@ private struct ClipTextSheet: View {
             .padding(12)
         }
         .frame(width: 464)
-    }
-}
-
-private struct PanelKeyMonitor: NSViewRepresentable {
-    let isEnabled: Bool
-    let onReturn: () -> Void
-
-    func makeNSView(context: Context) -> KeyMonitorView {
-        let view = KeyMonitorView()
-        view.isEnabled = isEnabled
-        view.onReturn = onReturn
-        return view
-    }
-
-    func updateNSView(_ nsView: KeyMonitorView, context: Context) {
-        nsView.isEnabled = isEnabled
-        nsView.onReturn = onReturn
-    }
-
-    static func dismantleNSView(_ nsView: KeyMonitorView, coordinator: ()) {
-        nsView.uninstall()
-    }
-
-    final class KeyMonitorView: NSView {
-        var isEnabled = true
-        var onReturn: (() -> Void)?
-        private var monitor: Any?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if window == nil {
-                uninstall()
-            } else {
-                install()
-            }
-        }
-
-        deinit {
-            uninstall()
-        }
-
-        func uninstall() {
-            if let monitor {
-                NSEvent.removeMonitor(monitor)
-                self.monitor = nil
-            }
-        }
-
-        private func install() {
-            guard monitor == nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.isEnabled, let window = self.window else { return event }
-                guard event.window == window || NSApp.keyWindow == window else { return event }
-                guard window.isKeyWindow else { return event }
-
-                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                guard flags.isDisjoint(with: [.command, .control, .option]) else { return event }
-                guard event.keyCode == 36 || event.keyCode == 76 else { return event }
-
-                self.onReturn?()
-                return nil
-            }
-        }
     }
 }
 
