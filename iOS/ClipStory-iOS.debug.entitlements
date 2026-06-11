@@ -12,9 +12,7 @@
 	</array>
 	<key>com.apple.developer.icloud-container-environment</key>
 	<string>$(ICLOUD_CONTAINER_ENVIRONMENT)</string>
-	<key>com.apple.security.application-groups</key>
-	<array>
-		<string>group.com.vladbabic.clipstory</string>
-	</array>
+	<key>aps-environment</key>
+	<string>$(APS_ENVIRONMENT)</string>
 </dict>
 </plist>

@@ -100,6 +100,9 @@ targets:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Development
           PROVISIONING_PROFILE_SPECIFIER: ClipStory Share Extension
+          # Manual Debug profiles predate the app group; the code falls back
+          # to the sandbox store when the group container is unavailable.
+          CODE_SIGN_ENTITLEMENTS: iOS/ClipStory-iOS.debug.entitlements
         Release:
           APS_ENVIRONMENT: production
           ICLOUD_CONTAINER_ENVIRONMENT: Production
@@ -143,6 +146,7 @@ targets:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Development
           PROVISIONING_PROFILE_SPECIFIER: Link between ios and macos clipstory app
+          CODE_SIGN_ENTITLEMENTS: iOSShareExtension/ClipStoryShareExtension.debug.entitlements
         Release:
           ICLOUD_CONTAINER_ENVIRONMENT: Production
 
