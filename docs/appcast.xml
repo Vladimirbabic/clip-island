@@ -12,7 +12,7 @@
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.0/ClipStory-1.0.0.zip" length="4704394" type="application/octet-stream" sparkle:edSignature="E6L9/sJXX5gAWiSLVLgzshE36WnrJO6CnDQ2O0z04EkG7FNwGfIyMK74sIYwa7U5NfUMsRpXT7sjkRQ9WAxHCw=="/>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.0/ClipStory-1.0.0.zip" length="4649709" type="application/octet-stream" sparkle:edSignature="GMKxL0ZDtUJ4LtpmL5jAerMfLa1Fo2E6MY1WdAltzGe/LBP/6xUu8lUzNi9ihMBEDldqiUqWcDd/HkPtEv6ZAg=="/>
         </item>
     </channel>
 </rss>

@@ -43,6 +43,8 @@ require_cmd security
 require_cmd spctl
 require_cmd xcodebuild
 require_cmd xcrun
+require_cmd zip
+require_cmd zipinfo
 
 if [[ "${TEAM_ID}" != "DY4JMWWW5S" ]]; then
   fail "Refusing to release with TEAM_ID=${TEAM_ID}; expected DY4JMWWW5S."
@@ -108,7 +110,16 @@ xcrun notarytool submit "${NOTARY_ZIP}" "${NOTARY_ARGS[@]}" --wait
 xcrun stapler staple "${APP_PATH}"
 spctl --assess --type execute --verbose "${APP_PATH}"
 
-ditto -c -k --keepParent "${APP_PATH}" "${FINAL_ZIP}"
+(
+  cd "${EXPORT_DIR}"
+  rm -f "${FINAL_ZIP}"
+  COPYFILE_DISABLE=1 zip -r -y -q "${FINAL_ZIP}" "${APP_NAME}"
+)
+
+if zipinfo -1 "${FINAL_ZIP}" | grep -Eq '(^|/)\._|^__MACOSX'; then
+  fail "Release ZIP contains AppleDouble metadata that can invalidate nested framework signatures."
+fi
+
 cp "${FINAL_ZIP}" "${SPARKLE_DIR}/"
 
 if [[ -z "${SPARKLE_ED_KEY_FILE}" && -f "${ROOT_DIR}/build/sparkle_private_key.ed25519" ]]; then

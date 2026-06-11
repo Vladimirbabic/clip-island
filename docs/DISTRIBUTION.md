@@ -54,6 +54,8 @@ spctl --assess --type execute --verbose build/archives/ClipStory.xcarchive/Produ
 Release artifact options:
 
 - ZIP is fastest for v1.
+- ZIPs must be generated without AppleDouble `._` metadata. Those files can be
+  extracted into nested frameworks and invalidate the app signature.
 - DMG looks more polished and can include a shortcut to `/Applications`.
 - Sparkle is wired; keep the appcast reachable before broad public launch.
 
