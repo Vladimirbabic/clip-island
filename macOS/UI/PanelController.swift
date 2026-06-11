@@ -5,20 +5,24 @@ import SwiftUI
 
 extension Notification.Name {
     /// Posted every time the history panel is presented so the SwiftUI content
-    /// can reset search state and refocus the search field.
+    /// can reset search state.
     static let clipStoryPanelDidShow = Notification.Name("clipStoryPanelDidShow")
-    /// Posted by the NSPanel itself when Return/Enter is pressed. Handling this
-    /// at the window layer avoids SwiftUI focus edge cases in tab controls.
-    static let clipStoryPanelReturnPressed = Notification.Name("clipStoryPanelReturnPressed")
+    /// Posted by the panel-level event tap while the island is visible. The panel
+    /// is intentionally not key, so SwiftUI key focus is not involved.
+    static let clipStoryPanelKeyPressed = Notification.Name("clipStoryPanelKeyPressed")
+    /// Posted by SwiftUI when secondary UI needs normal key focus, such as
+    /// sheets. The paste-first island path keeps this off.
+    static let clipStoryPanelKeyboardCaptureChanged = Notification.Name("clipStoryPanelKeyboardCaptureChanged")
 }
 
-/// Borderless, non-activating panel that becomes key so the search field is
-/// typeable without stealing activation from the frontmost app.
+/// Borderless, non-activating panel. In the normal paste path it is shown
+/// without becoming key so the previously active app keeps its cursor.
 private final class HistoryPanel: NSPanel {
     var onCancel: (() -> Void)?
     var onReturn: (() -> Void)?
+    var allowsKeyFocus = false
 
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { allowsKeyFocus }
 
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
@@ -72,6 +76,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let store: ClipStore
     private let pasteService: PasteService
     private let onCheckForUpdates: () -> Void
+    private let keyboardEventTap = PanelKeyboardEventTap()
 
     /// Black, rounded container the bloom mask is applied to.
     private let containerView = NSView()
@@ -89,6 +94,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// App that was active when the panel was last shown.
     private var pasteTarget: PasteService.PasteTarget?
     private var activeAppObserver: NSObjectProtocol?
+    private var keyboardCaptureObserver: NSObjectProtocol?
+    private var keyboardCapturePaused = false
     private var isHiding = false
 
     init(
@@ -110,6 +117,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         super.init()
         configurePanel()
         observeActiveApplication()
+        observeKeyboardCaptureRequests()
         installContent(store: store, container: container, syncStatus: syncStatus)
     }
 
@@ -117,6 +125,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let activeAppObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(activeAppObserver)
         }
+        if let keyboardCaptureObserver {
+            NotificationCenter.default.removeObserver(keyboardCaptureObserver)
+        }
+        keyboardEventTap.stop()
     }
 
     // MARK: - Public API
@@ -152,7 +164,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         setContentVisible(false, animated: false)
         prepareHiddenContentForPresentation()
 
-        panel.makeKeyAndOrderFront(nil)
+        keyboardCapturePaused = false
+        panel.allowsKeyFocus = false
+        panel.orderFrontRegardless()
+        startKeyboardCapture()
 
         if reduceMotion {
             applyMask(rect: bloom.full, cornerRadius: Self.cornerRadiusFull, animated: false)
@@ -257,7 +272,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             self?.hide()
         }
         panel.onReturn = {
-            NotificationCenter.default.post(name: .clipStoryPanelReturnPressed, object: nil)
+            NotificationCenter.default.post(name: .clipStoryPanelKeyPressed, object: nil)
         }
     }
 
@@ -271,6 +286,19 @@ final class PanelController: NSObject, NSWindowDelegate {
             Task { @MainActor in
                 guard let self, !self.panel.isVisible, !self.isHiding else { return }
                 self.rememberPasteTarget(app)
+            }
+        }
+    }
+
+    private func observeKeyboardCaptureRequests() {
+        keyboardCaptureObserver = NotificationCenter.default.addObserver(
+            forName: .clipStoryPanelKeyboardCaptureChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let paused = (notification.userInfo?["paused"] as? Bool) ?? false
+            Task { @MainActor in
+                self?.setKeyboardCapturePaused(paused)
             }
         }
     }
@@ -331,6 +359,41 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         hostingView = host
         panel.contentView = containerView
+    }
+
+    private func startKeyboardCapture() {
+        guard panel.isVisible, !keyboardCapturePaused else { return }
+        if keyboardEventTap.start() {
+            keyboardEventTap.onKeyDown = { event in
+                NotificationCenter.default.post(name: .clipStoryPanelKeyPressed, object: event)
+            }
+        } else {
+            // Fallback for systems where the event tap is unavailable. This keeps
+            // keyboard navigation usable, but the normal path above is the one
+            // that preserves the target app's cursor.
+            panel.allowsKeyFocus = true
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    private func stopKeyboardCapture() {
+        keyboardEventTap.stop()
+        keyboardEventTap.onKeyDown = nil
+    }
+
+    private func setKeyboardCapturePaused(_ paused: Bool) {
+        guard keyboardCapturePaused != paused else { return }
+        keyboardCapturePaused = paused
+        guard panel.isVisible else { return }
+        if paused {
+            stopKeyboardCapture()
+            panel.allowsKeyFocus = true
+            panel.makeKeyAndOrderFront(nil)
+        } else {
+            panel.allowsKeyFocus = false
+            panel.orderFrontRegardless()
+            startKeyboardCapture()
+        }
     }
 
     // MARK: - Bloom animation
@@ -520,6 +583,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func finishHide() {
         isHiding = false
         activeGeometry = nil
+        stopKeyboardCapture()
+        keyboardCapturePaused = false
+        panel.allowsKeyFocus = false
         let scale = panel.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         setTransitionRasterizationEnabled(false, scale: scale)
         panel.orderOut(nil)
@@ -529,10 +595,77 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func paste(_ item: ClipItem) {
         let target = pasteTarget
         isHiding = false
+        stopKeyboardCapture()
+        keyboardCapturePaused = false
+        panel.allowsKeyFocus = false
         // Order out synchronously (no animation) so the panel has fully
         // resigned key before the synthesized ⌘V fires — otherwise the paste
         // lands in our own search field.
         panel.orderOut(nil)
         pasteService.paste(item: item, into: target)
+    }
+}
+
+private final class PanelKeyboardEventTap {
+    var onKeyDown: ((NSEvent) -> Void)?
+
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+
+    func start() -> Bool {
+        if eventTap != nil { return true }
+
+        let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let selfPointer = Unmanaged.passUnretained(self).toOpaque()
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: { _, type, event, userInfo in
+                guard let userInfo else { return Unmanaged.passUnretained(event) }
+                let monitor = Unmanaged<PanelKeyboardEventTap>.fromOpaque(userInfo).takeUnretainedValue()
+                return monitor.handle(type: type, event: event)
+            },
+            userInfo: selfPointer
+        ) else {
+            return false
+        }
+
+        eventTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    func stop() {
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+        }
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+        runLoopSource = nil
+        eventTap = nil
+    }
+
+    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard type == .keyDown, let nsEvent = NSEvent(cgEvent: event) else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onKeyDown?(nsEvent)
+        }
+        return nil
     }
 }

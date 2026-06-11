@@ -159,11 +159,15 @@ struct HistoryView: View {
             NotificationCenter.default.publisher(for: Notification.Name("clipStoryPanelDidShow"))
         ) { _ in resetForPresentation() }
         .onReceive(
-            NotificationCenter.default.publisher(for: .clipStoryPanelReturnPressed)
-        ) { _ in
-            guard canUseGlobalPasteShortcuts else { return }
-            _ = pasteSelected()
+            NotificationCenter.default.publisher(for: .clipStoryPanelKeyPressed)
+        ) { notification in
+            if let event = notification.object as? NSEvent {
+                handlePanelKeyEvent(event)
+            } else if canUseGlobalPasteShortcuts {
+                _ = pasteSelected()
+            }
         }
+        .onChange(of: shouldPauseKeyboardCapture) { _, _ in publishKeyboardCaptureState() }
         .alert("Clear unsaved history?", isPresented: $isShowingClearConfirmation) {
             Button("Clear Unsaved History", role: .destructive) { store.clearUnpinned() }
             Button("Cancel", role: .cancel) {}
@@ -262,22 +266,19 @@ struct HistoryView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.6))
-                TextField("Search", text: $query)
-                    .textFieldStyle(.plain)
+                Text(query.isEmpty ? "Search" : query)
                     .font(.system(size: 13))
+                    .foregroundStyle(query.isEmpty ? .white.opacity(0.42) : .white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .frame(width: 170)
-                    .focused($isSearchFocused)
-                    .onSubmit { _ = pasteSelected() }
-                    .onKeyPress(.escape) { collapseSearch(); return .handled }
-                    .onKeyPress(.leftArrow) { moveSelection(by: -1) }
-                    .onKeyPress(.rightArrow) { moveSelection(by: 1) }
-                    .onKeyPress(.upArrow) { switchTab(by: -1) }
-                    .onKeyPress(.downArrow) { switchTab(by: 1) }
-                    .onKeyPress(phases: [.down, .repeat]) { handleSearchKey($0) }
+                    .frame(width: 170, alignment: .leading)
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(.white.opacity(0.1), in: Capsule())
+            .contentShape(Rectangle())
+            .onTapGesture { isSearchExpanded = true }
         } else {
             Button { expandSearch(initialText: "") } label: {
                 Image(systemName: "magnifyingglass")
@@ -393,6 +394,16 @@ struct HistoryView: View {
             && !selectedBoardRequiresUnlock
             && renamingItem == nil
             && editingTextItem == nil
+    }
+
+    private var shouldPauseKeyboardCapture: Bool {
+        isShowingClearConfirmation
+            || isShowingManualNoteSheet
+            || isShowingManualAddError
+            || renamingItem != nil
+            || editingTextItem != nil
+            || lockSetupBoard != nil
+            || removeLockBoard != nil
     }
 
     private var addMenu: some View {
@@ -624,11 +635,36 @@ struct HistoryView: View {
 
     // MARK: - Search expansion & keyboard
 
+    private enum PanelKeyCode {
+        static let returnKey: UInt16 = 36
+        static let tab: UInt16 = 48
+        static let escape: UInt16 = 53
+        static let keypadReturn: UInt16 = 76
+        static let leftArrow: UInt16 = 123
+        static let rightArrow: UInt16 = 124
+        static let downArrow: UInt16 = 125
+        static let upArrow: UInt16 = 126
+        static let delete: UInt16 = 51
+        static let forwardDelete: UInt16 = 117
+        static let v: UInt16 = 9
+
+        static let digits: [UInt16: Int] = [
+            18: 1,
+            19: 2,
+            20: 3,
+            21: 4,
+            23: 5,
+            22: 6,
+            26: 7,
+            28: 8,
+            25: 9,
+        ]
+    }
+
     private func expandSearch(initialText: String) {
         isSearchExpanded = true
         query = initialText
-        // The field only exists on the next render pass; focus it then.
-        DispatchQueue.main.async { isSearchFocused = true }
+        isSearchFocused = false
     }
 
     private func collapseSearch() {
@@ -715,6 +751,143 @@ struct HistoryView: View {
     private func resetInlineUnlock() {
         inlineUnlockPassword = ""
         inlineUnlockError = ""
+    }
+
+    private func publishKeyboardCaptureState() {
+        NotificationCenter.default.post(
+            name: .clipStoryPanelKeyboardCaptureChanged,
+            object: nil,
+            userInfo: ["paused": shouldPauseKeyboardCapture]
+        )
+    }
+
+    @discardableResult
+    private func handlePanelKeyEvent(_ event: NSEvent) -> Bool {
+        guard !shouldPauseKeyboardCapture else { return true }
+
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if handleCommandKey(event, flags: flags) {
+            return true
+        }
+
+        if selectedBoardRequiresUnlock {
+            return handleInlineUnlockEvent(event, flags: flags)
+        }
+        if isSearchExpanded {
+            return handleSearchEvent(event, flags: flags)
+        }
+        return handleBrowseEvent(event, flags: flags)
+    }
+
+    private func handleCommandKey(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+        guard flags.contains(.command), !flags.contains(.control), !flags.contains(.option) else {
+            return false
+        }
+        if let number = PanelKeyCode.digits[event.keyCode] {
+            pasteItem(at: number - 1)
+            return true
+        }
+        if event.keyCode == PanelKeyCode.v, flags.contains(.shift) {
+            onClose()
+            return true
+        }
+        return true
+    }
+
+    private func handleBrowseEvent(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+        switch event.keyCode {
+        case PanelKeyCode.tab:
+            _ = switchTab(by: flags.contains(.shift) ? -1 : 1)
+        case PanelKeyCode.upArrow:
+            _ = switchTab(by: -1)
+        case PanelKeyCode.downArrow:
+            _ = switchTab(by: 1)
+        case PanelKeyCode.leftArrow:
+            _ = moveSelection(by: -1)
+        case PanelKeyCode.rightArrow:
+            _ = moveSelection(by: 1)
+        case PanelKeyCode.returnKey, PanelKeyCode.keypadReturn:
+            _ = pasteSelected()
+        case PanelKeyCode.escape:
+            onClose()
+        case PanelKeyCode.delete, PanelKeyCode.forwardDelete:
+            break
+        default:
+            if let characters = printableCharacters(from: event, flags: flags),
+               !characters.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                expandSearch(initialText: characters)
+            }
+        }
+        return true
+    }
+
+    private func handleSearchEvent(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+        switch event.keyCode {
+        case PanelKeyCode.tab:
+            _ = switchTab(by: flags.contains(.shift) ? -1 : 1)
+        case PanelKeyCode.upArrow:
+            _ = switchTab(by: -1)
+        case PanelKeyCode.downArrow:
+            _ = switchTab(by: 1)
+        case PanelKeyCode.leftArrow:
+            _ = moveSelection(by: -1)
+        case PanelKeyCode.rightArrow:
+            _ = moveSelection(by: 1)
+        case PanelKeyCode.returnKey, PanelKeyCode.keypadReturn:
+            _ = pasteSelected()
+        case PanelKeyCode.escape:
+            collapseSearch()
+        case PanelKeyCode.delete, PanelKeyCode.forwardDelete:
+            if !query.isEmpty {
+                query.removeLast()
+            } else {
+                collapseSearch()
+            }
+        default:
+            if let characters = printableCharacters(from: event, flags: flags) {
+                query.append(characters)
+            }
+        }
+        return true
+    }
+
+    private func handleInlineUnlockEvent(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+        switch event.keyCode {
+        case PanelKeyCode.returnKey, PanelKeyCode.keypadReturn:
+            submitInlineUnlock()
+        case PanelKeyCode.escape:
+            onClose()
+        case PanelKeyCode.delete, PanelKeyCode.forwardDelete:
+            if !inlineUnlockPassword.isEmpty {
+                inlineUnlockPassword.removeLast()
+            }
+        default:
+            if let characters = printableCharacters(from: event, flags: flags) {
+                inlineUnlockPassword.append(characters)
+                inlineUnlockError = ""
+            }
+        }
+        return true
+    }
+
+    private func printableCharacters(from event: NSEvent, flags: NSEvent.ModifierFlags) -> String? {
+        guard !flags.contains(.command), !flags.contains(.control), !flags.contains(.option) else {
+            return nil
+        }
+        guard let characters = event.characters, !characters.isEmpty else { return nil }
+        let scalars = characters.unicodeScalars
+        guard !scalars.contains(where: { scalar in
+            CharacterSet.controlCharacters.contains(scalar)
+                || (0xF700...0xF8FF).contains(scalar.value)
+        }) else {
+            return nil
+        }
+        return characters
+    }
+
+    private func pasteItem(at index: Int) {
+        guard visibleItems.indices.contains(index), canUseGlobalPasteShortcuts else { return }
+        onPaste(visibleItems[index])
     }
 
     private func handleEscape() -> KeyPress.Result {
@@ -925,6 +1098,7 @@ struct HistoryView: View {
         resetInlineUnlock()
         validateSelectedTab()
         focusPrimaryControl()
+        publishKeyboardCaptureState()
     }
 }
 
