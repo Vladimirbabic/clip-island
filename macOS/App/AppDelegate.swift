@@ -14,7 +14,7 @@ import SwiftUI
 ///   pasteboard writes before the monitor polls them.
 /// - `PanelController` references `PasteService` for the paste-back flow.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     private let logger = Logger(subsystem: "com.vladbabic.clipstory", category: "app")
 
     private var statusItem: NSStatusItem?
@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
-            userDriverDelegate: nil
+            userDriverDelegate: self
         )
 
         monitor.onItemCaptured = { [weak self] item in
@@ -277,11 +277,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdatesFromMenu(_ sender: Any?) {
-        updaterController?.checkForUpdates(sender)
+        checkForUpdatesPresentingOutsideIsland(sender)
     }
 
     private func checkForUpdatesFromToolbar() {
-        updaterController?.checkForUpdates(nil)
+        checkForUpdatesPresentingOutsideIsland(nil)
+    }
+
+    private func checkForUpdatesPresentingOutsideIsland(_ sender: Any?) {
+        prepareForSparkleUI()
+        updaterController?.checkForUpdates(sender)
+    }
+
+    private func prepareForSparkleUI() {
+        panelController?.hideImmediatelyForExternalUI()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func standardUserDriverWillShowModalAlert() {
+        prepareForSparkleUI()
+    }
+
+    func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool,
+        forUpdate update: SUAppcastItem,
+        state: SPUUserUpdateState
+    ) {
+        guard handleShowingUpdate else { return }
+        prepareForSparkleUI()
     }
 }
 

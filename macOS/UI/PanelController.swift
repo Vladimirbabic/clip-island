@@ -187,6 +187,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    func hideImmediatelyForExternalUI() {
+        guard panel.isVisible || isHiding else { return }
+        rasterizationResetTask?.cancel()
+        maskLayer.removeAllAnimations()
+        hostingView?.layer?.removeAllAnimations()
+        containerView.layer?.removeAllAnimations()
+        setContentVisible(false, animated: false)
+        finishHide()
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowDidResignKey(_ notification: Notification) {
