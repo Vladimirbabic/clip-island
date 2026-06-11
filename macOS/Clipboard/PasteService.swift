@@ -72,7 +72,7 @@ final class PasteService {
 
     private func waitForActivation(of app: NSRunningApplication, attempt: Int) {
         if isActivePasteTarget(app) || attempt >= Self.maxActivationAttempts {
-            postCommandVAfterPasteDelay()
+            postCommandVAfterPasteDelay(to: app.processIdentifier)
             return
         }
 
@@ -88,9 +88,9 @@ final class PasteService {
             || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
     }
 
-    private func postCommandVAfterPasteDelay() {
+    private func postCommandVAfterPasteDelay(to processIdentifier: pid_t? = nil) {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteDelay) {
-            Self.postCommandV()
+            Self.postCommandV(to: processIdentifier)
         }
     }
 
@@ -176,7 +176,7 @@ final class PasteService {
             .contains(URL(fileURLWithPath: path).pathExtension.lowercased())
     }
 
-    private nonisolated static func postCommandV() {
+    private nonisolated static func postCommandV(to processIdentifier: pid_t? = nil) {
         guard
             let source = CGEventSource(stateID: .combinedSessionState),
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
@@ -185,7 +185,13 @@ final class PasteService {
 
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+
+        if let processIdentifier {
+            keyDown.postToPid(processIdentifier)
+            keyUp.postToPid(processIdentifier)
+        } else {
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+        }
     }
 }
