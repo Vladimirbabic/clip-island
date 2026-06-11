@@ -122,6 +122,7 @@ struct HistoryView: View {
         // the rounded-bottom bloom shape; keep the content itself transparent.
         .background(Color.clear)
         .background(quickPasteShortcuts)
+        .background(panelKeyMonitor)
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: searchFilters) { _, _ in selectedIndex = 0 }
         .onChange(of: selectedTab) { _, _ in
@@ -314,14 +315,9 @@ struct HistoryView: View {
     /// Hidden buttons so ⌘1…⌘9 paste the Nth visible card even while the
     /// search field has focus (keyboard shortcuts resolve window-wide).
     private var quickPasteShortcuts: some View {
-        Group {
-            Button("") { _ = pasteSelected() }
-                .keyboardShortcut(.return, modifiers: [])
-                .disabled(visibleItems.isEmpty)
-            ForEach(1...9, id: \.self) { number in
-                Button("") { if visibleItems.indices.contains(number - 1) { onPaste(visibleItems[number - 1]) } }
-                    .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
-            }
+        ForEach(1...9, id: \.self) { number in
+            Button("") { if visibleItems.indices.contains(number - 1) { onPaste(visibleItems[number - 1]) } }
+                .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -335,6 +331,14 @@ struct HistoryView: View {
             && !isShowingManualAddError
             && renamingItem == nil
             && editingTextItem == nil
+    }
+
+    private var panelKeyMonitor: some View {
+        PanelKeyMonitor(isEnabled: canUseGlobalPasteShortcuts) {
+            _ = pasteSelected()
+        }
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 
     private var addMenu: some View {
@@ -834,6 +838,69 @@ private struct ClipTextSheet: View {
             .padding(12)
         }
         .frame(width: 464)
+    }
+}
+
+private struct PanelKeyMonitor: NSViewRepresentable {
+    let isEnabled: Bool
+    let onReturn: () -> Void
+
+    func makeNSView(context: Context) -> KeyMonitorView {
+        let view = KeyMonitorView()
+        view.isEnabled = isEnabled
+        view.onReturn = onReturn
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyMonitorView, context: Context) {
+        nsView.isEnabled = isEnabled
+        nsView.onReturn = onReturn
+    }
+
+    static func dismantleNSView(_ nsView: KeyMonitorView, coordinator: ()) {
+        nsView.uninstall()
+    }
+
+    final class KeyMonitorView: NSView {
+        var isEnabled = true
+        var onReturn: (() -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil {
+                uninstall()
+            } else {
+                install()
+            }
+        }
+
+        deinit {
+            uninstall()
+        }
+
+        func uninstall() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        private func install() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, self.isEnabled, let window = self.window else { return event }
+                guard event.window == window || NSApp.keyWindow == window else { return event }
+                guard window.isKeyWindow else { return event }
+
+                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                guard flags.isDisjoint(with: [.command, .control, .option]) else { return event }
+                guard event.keyCode == 36 || event.keyCode == 76 else { return event }
+
+                self.onReturn?()
+                return nil
+            }
+        }
     }
 }
 
