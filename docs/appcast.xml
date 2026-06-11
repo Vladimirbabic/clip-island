@@ -6,6 +6,15 @@
         <description>Release feed for ClipStory macOS updates.</description>
         <language>en</language>
         <item>
+            <title>1.0.25</title>
+            <pubDate>Thu, 11 Jun 2026 23:52:51 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>1.0.25</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.25/ClipStory-1.0.25.zip" length="4785748" type="application/octet-stream" sparkle:edSignature="MgOkdIGfkwquVnHx4RTbB2+2o+vmK/frc2kpMbbmXN/UzQqzlqa6uQDyp9i1G+tm48kDCYOurmoMg/3AkyGJCQ=="/>
+        </item>
+        <item>
             <title>1.0.23</title>
             <pubDate>Thu, 11 Jun 2026 23:02:55 +0200</pubDate>
             <link>https://github.com/Vladimirbabic/clip-island</link>
@@ -22,15 +31,6 @@
             <sparkle:shortVersionString>1.0.22</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.22/ClipStory-1.0.22.zip" length="4772952" type="application/octet-stream" sparkle:edSignature="ZLjY9Dl3Z5EDlvaP54DJn5wgz+e+LBcz3V1kZ/oVm6/RqtBGmDkBujBKpb4BcMwIHOgPjTO7VfMc7dlv5u1mDw=="/>
-        </item>
-        <item>
-            <title>1.0.21</title>
-            <pubDate>Thu, 11 Jun 2026 22:22:25 +0200</pubDate>
-            <link>https://github.com/Vladimirbabic/clip-island</link>
-            <sparkle:version>22</sparkle:version>
-            <sparkle:shortVersionString>1.0.21</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.21/ClipStory-1.0.21.zip" length="4764998" type="application/octet-stream" sparkle:edSignature="Ok6TR7DYNo0G4GPXBS73j4aZ+cC3lqcJS8CBWyEbUgLvohlPTjRmhtCiapsBI4bFZwsFH6Nc7YF8W9hYHklZAA=="/>
         </item>
     </channel>
 </rss>
