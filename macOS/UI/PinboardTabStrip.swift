@@ -40,7 +40,6 @@ struct PinboardTabStrip: View {
     @Binding var selection: PanelTab
     let unlockedBoardIDs: Set<PersistentIdentifier>
     let onLockRequest: (Pinboard) -> Void
-    let onUnlockRequest: (Pinboard) -> Void
     let onRemoveLockRequest: (Pinboard) -> Void
     let onLockNow: (Pinboard) -> Void
 
@@ -151,8 +150,6 @@ struct PinboardTabStrip: View {
         if board.isLocked {
             if unlockedBoardIDs.contains(board.persistentModelID) {
                 Button("Lock Page Now") { onLockNow(board) }
-            } else {
-                Button("Unlock Page\u{2026}") { onUnlockRequest(board) }
             }
             Button("Remove Lock\u{2026}") { onRemoveLockRequest(board) }
         } else {

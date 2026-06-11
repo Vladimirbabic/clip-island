@@ -29,9 +29,10 @@ struct HistoryListView: View {
     @State private var isShowingManualNoteSheet = false
     @State private var isShowingFileImporter = false
     @State private var lockSetupBoard: Pinboard?
-    @State private var unlockBoard: Pinboard?
     @State private var removeLockBoard: Pinboard?
     @State private var unlockedBoardIDs = Set<PersistentIdentifier>()
+    @State private var inlineUnlockPassword = ""
+    @State private var inlineUnlockError = ""
     @State private var manualAddErrorMessage = ""
     @State private var isShowingManualAddError = false
     @State private var isSelecting = false
@@ -46,6 +47,7 @@ struct HistoryListView: View {
     @State private var copyFeedback: CopyFeedback?
     @State private var copyFeedbackDismissal: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
+    @FocusState private var isInlineUnlockFocused: Bool
 
     private let gridColumns = [
         GridItem(.flexible(), spacing: 12),
@@ -174,22 +176,6 @@ struct HistoryListView: View {
                     }
                 }
             }
-            .sheet(isPresented: isUnlockPresented) {
-                if let unlockBoard {
-                    PinboardUnlockSheet(
-                        boardName: unlockBoard.displayName,
-                        title: "Unlock Page",
-                        actionTitle: "Unlock"
-                    ) { password in
-                        let didUnlock = store.unlockPinboard(unlockBoard, password: password)
-                        if didUnlock {
-                            unlockedBoardIDs.insert(unlockBoard.persistentModelID)
-                            self.unlockBoard = nil
-                        }
-                        return didUnlock
-                    }
-                }
-            }
             .sheet(isPresented: isRemoveLockPresented) {
                 if let removeLockBoard {
                     PinboardUnlockSheet(
@@ -229,9 +215,17 @@ struct HistoryListView: View {
                     selectedItemIDs.removeAll()
                 }
             }
+            .onChange(of: selectedBoardID) { _, _ in
+                resetInlineUnlock()
+                focusInlineUnlockIfNeeded()
+            }
+            .onChange(of: selectedBoardRequiresUnlock) { _, _ in
+                focusInlineUnlockIfNeeded()
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase != .active else { return }
                 unlockedBoardIDs.removeAll()
+                resetInlineUnlock()
                 detailPath.removeAll()
             }
         }
@@ -442,23 +436,29 @@ struct HistoryListView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.88))
                 .multilineTextAlignment(.center)
-            Button {
-                if let selectedBoard {
-                    unlockBoard = selectedBoard
-                }
-            } label: {
-                Text("Unlock Page")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .frame(height: 44)
-                    .background(Color.white.opacity(0.10), in: Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+            SecureField("Password", text: $inlineUnlockPassword)
+                .textContentType(.password)
+                .submitLabel(.go)
+                .focused($isInlineUnlockFocused)
+                .onSubmit { submitInlineUnlock() }
+                .font(.body.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(width: 280, height: 48)
+                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                )
+            if !inlineUnlockError.isEmpty {
+                Text(inlineUnlockError)
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.95))
             }
-            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 90)
+        .onAppear { focusInlineUnlockField() }
     }
 
     @ViewBuilder
@@ -683,13 +683,7 @@ struct HistoryListView: View {
                     }
                 }
                 if selectedBoard.isLocked {
-                    if selectedBoardRequiresUnlock {
-                        Button {
-                            unlockBoard = selectedBoard
-                        } label: {
-                            Label("Unlock Page...", systemImage: "lock.open")
-                        }
-                    } else {
+                    if !selectedBoardRequiresUnlock {
                         Button {
                             unlockedBoardIDs.remove(selectedBoard.persistentModelID)
                         } label: {
@@ -792,13 +786,6 @@ struct HistoryListView: View {
         )
     }
 
-    private var isUnlockPresented: Binding<Bool> {
-        Binding(
-            get: { unlockBoard != nil },
-            set: { if !$0 { unlockBoard = nil } }
-        )
-    }
-
     private var isRemoveLockPresented: Binding<Bool> {
         Binding(
             get: { removeLockBoard != nil },
@@ -824,8 +811,46 @@ struct HistoryListView: View {
 
     private func selectBoard(_ board: Pinboard) {
         selectedBoardID = board.persistentModelID
-        if board.isLocked && !unlockedBoardIDs.contains(board.persistentModelID) {
-            unlockBoard = board
+    }
+
+    private func focusInlineUnlockIfNeeded() {
+        if selectedBoardRequiresUnlock {
+            focusInlineUnlockField()
+        } else {
+            isInlineUnlockFocused = false
+        }
+    }
+
+    private func focusInlineUnlockField() {
+        DispatchQueue.main.async {
+            isSearchFocused = false
+            isInlineUnlockFocused = false
+            DispatchQueue.main.async {
+                isInlineUnlockFocused = true
+            }
+        }
+    }
+
+    private func resetInlineUnlock() {
+        inlineUnlockPassword = ""
+        inlineUnlockError = ""
+    }
+
+    private func submitInlineUnlock() {
+        guard let selectedBoard, selectedBoardRequiresUnlock else { return }
+        guard !inlineUnlockPassword.isEmpty else {
+            inlineUnlockError = ""
+            focusInlineUnlockField()
+            return
+        }
+        if store.unlockPinboard(selectedBoard, password: inlineUnlockPassword) {
+            unlockedBoardIDs.insert(selectedBoard.persistentModelID)
+            resetInlineUnlock()
+            isInlineUnlockFocused = false
+        } else {
+            inlineUnlockError = "Wrong password."
+            inlineUnlockPassword = ""
+            focusInlineUnlockField()
         }
     }
 

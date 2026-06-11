@@ -34,9 +34,10 @@ struct HistoryView: View {
     @State private var isShowingClearConfirmation = false
     @State private var isShowingManualNoteSheet = false
     @State private var lockSetupBoard: Pinboard?
-    @State private var unlockBoard: Pinboard?
     @State private var removeLockBoard: Pinboard?
     @State private var unlockedBoardIDs = Set<PersistentIdentifier>()
+    @State private var inlineUnlockPassword = ""
+    @State private var inlineUnlockError = ""
     @State private var renamingItem: ClipItem?
     @State private var renameText = ""
     @State private var editingTextItem: ClipItem?
@@ -45,6 +46,7 @@ struct HistoryView: View {
     @State private var isShowingManualAddError = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isGridFocused: Bool
+    @FocusState private var isInlineUnlockFocused: Bool
 
     private static let topBarLeadingWidth: CGFloat = 118
     private static let topBarTrailingWidth: CGFloat = 98
@@ -146,11 +148,13 @@ struct HistoryView: View {
         .onChange(of: selectedTab) { _, _ in
             selectedIndex = 0
             isSearchFocused = false
-            focusGrid()
+            resetInlineUnlock()
+            focusPrimaryControl()
         }
+        .onChange(of: selectedBoardRequiresUnlock) { _, _ in focusPrimaryControl() }
         .onChange(of: visibleItemIDs) { _, _ in clampSelection() }
         .onChange(of: pinboardIDs) { _, _ in validateSelectedTab() }
-        .onAppear { focusGrid() }
+        .onAppear { focusPrimaryControl() }
         .onReceive(
             NotificationCenter.default.publisher(for: Notification.Name("clipStoryPanelDidShow"))
         ) { _ in resetForPresentation() }
@@ -178,22 +182,6 @@ struct HistoryView: View {
                         unlockedBoardIDs.insert(lockSetupBoard.persistentModelID)
                     }
                     self.lockSetupBoard = nil
-                }
-            }
-        }
-        .sheet(isPresented: isUnlockPresented) {
-            if let unlockBoard {
-                PinboardUnlockSheet(
-                    boardName: unlockBoard.displayName,
-                    title: "Unlock Page",
-                    actionTitle: "Unlock"
-                ) { password in
-                    let didUnlock = store.unlockPinboard(unlockBoard, password: password)
-                    if didUnlock {
-                        unlockedBoardIDs.insert(unlockBoard.persistentModelID)
-                        self.unlockBoard = nil
-                    }
-                    return didUnlock
                 }
             }
         }
@@ -249,7 +237,6 @@ struct HistoryView: View {
                         selection: $selectedTab,
                         unlockedBoardIDs: unlockedBoardIDs,
                         onLockRequest: { lockSetupBoard = $0 },
-                        onUnlockRequest: { unlockBoard = $0 },
                         onRemoveLockRequest: { removeLockBoard = $0 },
                         onLockNow: { unlockedBoardIDs.remove($0.persistentModelID) }
                     )
@@ -518,15 +505,27 @@ struct HistoryView: View {
             Text("\(selectedBoard?.displayName ?? "Page") is locked")
                 .font(.title3)
                 .foregroundStyle(.white.opacity(0.88))
-            Button("Unlock Page") {
-                if let selectedBoard {
-                    unlockBoard = selectedBoard
-                }
+            SecureField("Password", text: $inlineUnlockPassword)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white)
+                .focused($isInlineUnlockFocused)
+                .onSubmit { submitInlineUnlock() }
+                .padding(.horizontal, 13)
+                .frame(width: 260, height: 34)
+                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                )
+            if !inlineUnlockError.isEmpty {
+                Text(inlineUnlockError)
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.95))
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { focusInlineUnlockField() }
     }
 
     private func card(for item: ClipItem, at index: Int) -> some View {
@@ -636,7 +635,7 @@ struct HistoryView: View {
         query = ""
         isSearchExpanded = false
         isSearchFocused = false
-        focusGrid()
+        focusPrimaryControl()
     }
 
     private var kindFilterBinding: Binding<String?> {
@@ -667,13 +666,6 @@ struct HistoryView: View {
         )
     }
 
-    private var isUnlockPresented: Binding<Bool> {
-        Binding(
-            get: { unlockBoard != nil },
-            set: { if !$0 { unlockBoard = nil } }
-        )
-    }
-
     private var isRemoveLockPresented: Binding<Bool> {
         Binding(
             get: { removeLockBoard != nil },
@@ -693,11 +685,36 @@ struct HistoryView: View {
     private func focusGrid() {
         DispatchQueue.main.async {
             isSearchFocused = false
+            isInlineUnlockFocused = false
             isGridFocused = false
             DispatchQueue.main.async {
                 isGridFocused = true
             }
         }
+    }
+
+    private func focusPrimaryControl() {
+        if selectedBoardRequiresUnlock {
+            focusInlineUnlockField()
+        } else {
+            focusGrid()
+        }
+    }
+
+    private func focusInlineUnlockField() {
+        DispatchQueue.main.async {
+            isSearchFocused = false
+            isGridFocused = false
+            isInlineUnlockFocused = false
+            DispatchQueue.main.async {
+                isInlineUnlockFocused = true
+            }
+        }
+    }
+
+    private func resetInlineUnlock() {
+        inlineUnlockPassword = ""
+        inlineUnlockError = ""
     }
 
     private func handleEscape() -> KeyPress.Result {
@@ -797,6 +814,24 @@ struct HistoryView: View {
         return .handled
     }
 
+    private func submitInlineUnlock() {
+        guard let selectedBoard, selectedBoardRequiresUnlock else { return }
+        guard !inlineUnlockPassword.isEmpty else {
+            inlineUnlockError = ""
+            focusInlineUnlockField()
+            return
+        }
+        if store.unlockPinboard(selectedBoard, password: inlineUnlockPassword) {
+            unlockedBoardIDs.insert(selectedBoard.persistentModelID)
+            resetInlineUnlock()
+            focusGrid()
+        } else {
+            inlineUnlockError = "Wrong password."
+            inlineUnlockPassword = ""
+            focusInlineUnlockField()
+        }
+    }
+
     private func addManualNote(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -887,8 +922,9 @@ struct HistoryView: View {
         selectedIndex = 0
         wheelAccumulator = 0
         unlockedBoardIDs.removeAll()
+        resetInlineUnlock()
         validateSelectedTab()
-        focusGrid()
+        focusPrimaryControl()
     }
 }
 
