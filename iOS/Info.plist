@@ -20,8 +20,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ClipStoryCloudKitEnvironment</key>
+	<string>$(ICLOUD_CONTAINER_ENVIRONMENT)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock locked ClipStory pages.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

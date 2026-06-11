@@ -92,6 +92,7 @@ struct SettingsSheet: View {
         Section("iCloud Sync") {
             Label(syncStatus.statusText, systemImage: syncStatus.state.systemImageName)
                 .foregroundStyle(syncStatus.state.isSyncing ? Color.primary : Color.secondary)
+            LabeledContent("Environment", value: cloudKitEnvironmentText)
             LabeledContent("Freshness", value: syncStatus.freshnessText)
             LabeledContent("Test Clips", value: syncProbeMessage ?? store.syncProbeSummary())
             Button {
@@ -112,6 +113,10 @@ struct SettingsSheet: View {
                 Label("Clean Sync Test Clips", systemImage: "trash")
             }
         }
+    }
+
+    private var cloudKitEnvironmentText: String {
+        Bundle.main.object(forInfoDictionaryKey: "ClipStoryCloudKitEnvironment") as? String ?? "Unknown"
     }
 
     private func createSyncProbe() {

@@ -288,6 +288,19 @@ struct SettingsView: View {
             SettingsDivider()
 
             SettingsRow(
+                title: "Environment",
+                subtitle: "CloudKit database used by this build.",
+                systemImage: "server.rack",
+                tint: .teal
+            ) {
+                Text(cloudKitEnvironmentText)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
+
+            SettingsDivider()
+
+            SettingsRow(
                 title: "Freshness",
                 subtitle: "Last observed CloudKit activity.",
                 systemImage: "arrow.triangle.2.circlepath",
@@ -329,6 +342,10 @@ struct SettingsView: View {
     private var syncProbeSubtitle: String {
         _ = settingsRevision
         return store.syncProbeSummary()
+    }
+
+    private var cloudKitEnvironmentText: String {
+        Bundle.main.object(forInfoDictionaryKey: "ClipStoryCloudKitEnvironment") as? String ?? "Unknown"
     }
 
     private func createSyncProbe() {

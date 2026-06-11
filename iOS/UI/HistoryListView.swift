@@ -1,3 +1,4 @@
+import LocalAuthentication
 import SwiftData
 import SwiftUI
 import UIKit
@@ -38,6 +39,10 @@ struct HistoryListView: View {
     @State private var isSelecting = false
     @State private var selectedItemIDs = Set<PersistentIdentifier>()
     @State private var detailPath: [PersistentIdentifier] = []
+    @State private var recentlyCopiedItemID: PersistentIdentifier?
+    @State private var copiedItemDismissal: Task<Void, Never>?
+    @State private var biometricPromptBoardID: PersistentIdentifier?
+    @State private var isBiometricUnlockRunning = false
 
     @State private var newBoardItem: ClipItem?
     @State private var newBoardName = ""
@@ -228,6 +233,9 @@ struct HistoryListView: View {
                 resetInlineUnlock()
                 detailPath.removeAll()
             }
+            .onAppear {
+                syncStatus.refresh()
+            }
         }
     }
 
@@ -243,6 +251,12 @@ struct HistoryListView: View {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.48))
                     .lineLimit(1)
+                if syncStatus.lastCheckedAt != nil {
+                    Text(syncStatus.freshnessText)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.36))
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 12)
             Button(isSelecting ? "Done" : "Select") {
@@ -388,6 +402,11 @@ struct HistoryListView: View {
                 }
             }
             Section {
+                Button {
+                    refreshSync()
+                } label: {
+                    Label("Refresh iCloud", systemImage: "arrow.clockwise.icloud")
+                }
                 Button {} label: {
                     Label(syncStatus.statusText, systemImage: syncStatus.state.systemImageName)
                 }
@@ -424,12 +443,15 @@ struct HistoryListView: View {
                 .padding(.bottom, 210)
             }
             .scrollIndicators(.hidden)
+            .refreshable {
+                refreshSync()
+            }
         }
     }
 
     private var lockedState: some View {
         VStack(spacing: 14) {
-            Image(systemName: "lock.fill")
+            Image(systemName: isBiometricUnlockRunning ? "faceid" : "lock.fill")
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.white.opacity(0.36))
             Text("\(selectedBoard?.displayName ?? "Page") is locked")
@@ -458,7 +480,10 @@ struct HistoryListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 90)
-        .onAppear { focusInlineUnlockField() }
+        .onAppear {
+            attemptBiometricUnlockIfAvailable()
+            focusInlineUnlockField()
+        }
     }
 
     @ViewBuilder
@@ -467,15 +492,23 @@ struct HistoryListView: View {
             Button {
                 toggleSelection(for: item)
             } label: {
-                ClipGridCardView(item: item, isSelected: selectedItemIDs.contains(item.persistentModelID))
+                ClipGridCardView(
+                    item: item,
+                    isSelected: selectedItemIDs.contains(item.persistentModelID),
+                    isRecentlyCopied: false
+                )
             }
             .buttonStyle(.plain)
             .contextMenu { cardMenu(for: item) }
         } else {
             Button {
-                showCopyFeedback(success: ClipboardWriter.copy(item))
+                copyItem(item)
             } label: {
-                ClipGridCardView(item: item, isSelected: false)
+                ClipGridCardView(
+                    item: item,
+                    isSelected: false,
+                    isRecentlyCopied: recentlyCopiedItemID == item.persistentModelID
+                )
             }
             .buttonStyle(.plain)
             .contextMenu { cardMenu(for: item) }
@@ -490,7 +523,7 @@ struct HistoryListView: View {
             Label("View Details", systemImage: "doc.text.magnifyingglass")
         }
         Button {
-            showCopyFeedback(success: ClipboardWriter.copy(item))
+            copyItem(item)
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
@@ -834,6 +867,8 @@ struct HistoryListView: View {
     private func resetInlineUnlock() {
         inlineUnlockPassword = ""
         inlineUnlockError = ""
+        biometricPromptBoardID = nil
+        isBiometricUnlockRunning = false
     }
 
     private func submitInlineUnlock() {
@@ -847,10 +882,12 @@ struct HistoryListView: View {
             unlockedBoardIDs.insert(selectedBoard.persistentModelID)
             resetInlineUnlock()
             isInlineUnlockFocused = false
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         } else {
             inlineUnlockError = "Wrong password."
             inlineUnlockPassword = ""
             focusInlineUnlockField()
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 
@@ -887,6 +924,12 @@ struct HistoryListView: View {
             store.assign(item, to: selectedBoard)
         }
         showSavedFeedback()
+    }
+
+    private func refreshSync() {
+        syncStatus.refresh()
+        store.dedupeSweep()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func addManualNote(_ text: String) {
@@ -974,6 +1017,7 @@ struct HistoryListView: View {
     }
 
     private func showSavedFeedback() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         copyFeedbackDismissal?.cancel()
         withAnimation {
             copyFeedback = CopyFeedback(text: "Saved", systemImage: "checkmark.circle.fill")
@@ -1011,12 +1055,68 @@ struct HistoryListView: View {
     }
 
     private func showCopyFeedback(success: Bool) {
+        if success {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
         copyFeedbackDismissal?.cancel()
         withAnimation { copyFeedback = CopyFeedback(success: success) }
         copyFeedbackDismissal = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
             withAnimation { copyFeedback = nil }
+        }
+    }
+
+    private func copyItem(_ item: ClipItem) {
+        let success = ClipboardWriter.copy(item)
+        if success {
+            recentlyCopiedItemID = item.persistentModelID
+            copiedItemDismissal?.cancel()
+            copiedItemDismissal = Task {
+                try? await Task.sleep(for: .seconds(0.9))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        if recentlyCopiedItemID == item.persistentModelID {
+                            recentlyCopiedItemID = nil
+                        }
+                    }
+                }
+            }
+        }
+        showCopyFeedback(success: success)
+    }
+
+    private func attemptBiometricUnlockIfAvailable() {
+        guard let selectedBoard, selectedBoardRequiresUnlock else { return }
+        let boardID = selectedBoard.persistentModelID
+        guard biometricPromptBoardID != boardID, !isBiometricUnlockRunning else { return }
+
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else { return }
+
+        biometricPromptBoardID = boardID
+        isBiometricUnlockRunning = true
+        context.localizedCancelTitle = "Use Password"
+        context.evaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            localizedReason: "Unlock \(selectedBoard.displayName) in ClipStory."
+        ) { success, _ in
+            Task { @MainActor in
+                isBiometricUnlockRunning = false
+                guard selectedBoardID == boardID, selectedBoardRequiresUnlock else { return }
+                if success {
+                    unlockedBoardIDs.insert(boardID)
+                    resetInlineUnlock()
+                    isInlineUnlockFocused = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } else {
+                    focusInlineUnlockField()
+                }
+            }
         }
     }
 }
@@ -1160,6 +1260,7 @@ private struct PinboardUnlockSheet: View {
 private struct ClipGridCardView: View {
     let item: ClipItem
     let isSelected: Bool
+    let isRecentlyCopied: Bool
     private static let cardHeight: CGFloat = 196
     private static let headerHeight: CGFloat = 52
     private static let footerHeight: CGFloat = 25
@@ -1201,6 +1302,14 @@ private struct ClipGridCardView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 44, weight: .semibold))
                     .foregroundStyle(Color.white, Color.accentColor)
+            } else if isRecentlyCopied {
+                Label("Copied", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.62), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

@@ -216,8 +216,20 @@ struct ClipDetailView: View {
     @ViewBuilder
     private var metadataRows: some View {
         LabeledContent("Kind", value: item.kind.displayName)
+        if let fileName = item.fileName, !fileName.isEmpty {
+            LabeledContent("Filename", value: fileName)
+        }
+        if let dataSizeText {
+            LabeledContent("Size", value: dataSizeText)
+        }
+        if let type = item.fileTypeIdentifier, !type.isEmpty {
+            LabeledContent("Type", value: type)
+        }
         if let source = item.sourceAppName, !source.isEmpty {
             LabeledContent("Source", value: source)
+        }
+        if let bundleID = item.sourceAppBundleID, !bundleID.isEmpty {
+            LabeledContent("Source Bundle", value: bundleID)
         }
         if let board = item.pinboard {
             LabeledContent("Page", value: board.displayName)
@@ -226,9 +238,25 @@ struct ClipDetailView: View {
             LabeledContent("Title", value: title)
         }
         LabeledContent("Date", value: item.createdAt.formatted(date: .abbreviated, time: .shortened))
+        LabeledContent("Pinned", value: item.isPinned ? "Yes" : "No")
+        LabeledContent("Protected From Clear", value: item.pinboard != nil || item.isPinned ? "Yes" : "No")
         if item.kind == .text, let text = item.text {
             LabeledContent("Characters", value: "\(text.count)")
         }
+        if let recognizedText = item.recognizedText,
+           !recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            LabeledContent("Recognized Text", value: "\(recognizedText.count) characters")
+        }
+    }
+
+    private var dataSizeText: String? {
+        if let fileData = item.fileData {
+            return ByteCountFormatter.string(fromByteCount: Int64(fileData.count), countStyle: .file)
+        }
+        if let imageData = item.imageData {
+            return ByteCountFormatter.string(fromByteCount: Int64(imageData.count), countStyle: .file)
+        }
+        return nil
     }
 
     // MARK: - Actions

@@ -14,8 +14,8 @@ settings:
     # Apple Developer team ID (Vladimir Babic — from the Apple Development cert in the keychain)
     DEVELOPMENT_TEAM: DY4JMWWW5S
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    CURRENT_PROJECT_VERSION: 13
-    MARKETING_VERSION: 1.0.12
+    CURRENT_PROJECT_VERSION: 14
+    MARKETING_VERSION: 1.0.13
 
 packages:
   Sparkle:
@@ -44,6 +44,7 @@ targets:
         SUFeedURL: https://github.com/Vladimirbabic/clip-island/releases/latest/download/appcast.xml
         SUPublicEDKey: yD/iIqArwB8D0y+r2fl0MUoGkF6NY5sGmm4UqllEbLk=
         SUEnableInstallerLauncherService: true
+        ClipStoryCloudKitEnvironment: $(ICLOUD_CONTAINER_ENVIRONMENT)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vladbabic.clipstory
@@ -51,8 +52,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: YES
       configs:
+        Debug:
+          ICLOUD_CONTAINER_ENVIRONMENT: Development
         Release:
           ENABLE_HARDENED_RUNTIME: YES
+          ICLOUD_CONTAINER_ENVIRONMENT: Production
     dependencies:
       - package: Sparkle
 
@@ -72,6 +76,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        NSFaceIDUsageDescription: Unlock locked ClipStory pages.
+        ClipStoryCloudKitEnvironment: $(ICLOUD_CONTAINER_ENVIRONMENT)
         UIBackgroundModes: [remote-notification]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -88,11 +94,13 @@ targets:
       configs:
         Debug:
           APS_ENVIRONMENT: development
+          ICLOUD_CONTAINER_ENVIRONMENT: Development
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Development
           PROVISIONING_PROFILE_SPECIFIER: ClipStory Share Extension
         Release:
           APS_ENVIRONMENT: production
+          ICLOUD_CONTAINER_ENVIRONMENT: Production
     dependencies:
       - target: ClipStoryShareExtension
         embed: true
@@ -129,9 +137,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
       configs:
         Debug:
+          ICLOUD_CONTAINER_ENVIRONMENT: Development
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Development
           PROVISIONING_PROFILE_SPECIFIER: Link between ios and macos clipstory app
+        Release:
+          ICLOUD_CONTAINER_ENVIRONMENT: Production
 
   ClipStoryTests:
     type: bundle.unit-test
