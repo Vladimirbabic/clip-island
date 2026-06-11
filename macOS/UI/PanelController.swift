@@ -52,6 +52,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let panel: HistoryPanel
     private let store: ClipStore
     private let pasteService: PasteService
+    private let onCheckForUpdates: () -> Void
 
     /// Black, rounded container the bloom mask is applied to.
     private let containerView = NSView()
@@ -76,10 +77,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         store: ClipStore,
         container: ModelContainer,
         syncStatus: CloudSyncStatus,
-        pasteService: PasteService
+        pasteService: PasteService,
+        onCheckForUpdates: @escaping () -> Void
     ) {
         self.store = store
         self.pasteService = pasteService
+        self.onCheckForUpdates = onCheckForUpdates
         self.panel = HistoryPanel(
             contentRect: NSRect(x: 0, y: 0, width: Self.initialPanelWidth, height: Self.panelHeight),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
@@ -258,6 +261,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         let rootView = HistoryView(
             store: store,
             syncStatus: syncStatus,
+            onCheckForUpdates: { [weak self] in self?.onCheckForUpdates() },
             onPaste: { [weak self] item in self?.paste(item) },
             onClose: { [weak self] in self?.hide() }
         )

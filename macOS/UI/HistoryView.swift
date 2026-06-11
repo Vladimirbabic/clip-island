@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 struct HistoryView: View {
     @ObservedObject private var store: ClipStore
     @ObservedObject private var syncStatus: CloudSyncStatus
+    private let onCheckForUpdates: () -> Void
     private let onPaste: (ClipItem) -> Void
     private let onClose: () -> Void
 
@@ -42,7 +43,7 @@ struct HistoryView: View {
     @FocusState private var isGridFocused: Bool
 
     private static let topBarLeadingWidth: CGFloat = 118
-    private static let topBarTrailingWidth: CGFloat = 64
+    private static let topBarTrailingWidth: CGFloat = 98
     private static let cardPadding: CGFloat = 16
     private static let cardSpacing: CGFloat = 12
     private static let wheelStepThreshold: CGFloat = 42
@@ -53,11 +54,13 @@ struct HistoryView: View {
     init(
         store: ClipStore,
         syncStatus: CloudSyncStatus,
+        onCheckForUpdates: @escaping () -> Void,
         onPaste: @escaping (ClipItem) -> Void,
         onClose: @escaping () -> Void
     ) {
         _store = ObservedObject(wrappedValue: store)
         _syncStatus = ObservedObject(wrappedValue: syncStatus)
+        self.onCheckForUpdates = onCheckForUpdates
         self.onPaste = onPaste
         self.onClose = onClose
     }
@@ -176,6 +179,7 @@ struct HistoryView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             HStack(spacing: 8) {
+                updateButton
                 addMenu
                 overflowMenu
             }
@@ -332,9 +336,24 @@ struct HistoryView: View {
         .help("Add saved item")
     }
 
+    private var updateButton: some View {
+        Button {
+            onCheckForUpdates()
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Check for updates")
+    }
+
     private var overflowMenu: some View {
         Menu {
             Button(isCapturePaused ? "Resume Capture" : "Pause Capture") { isCapturePaused.toggle() }
+            Button("Check for Updates\u{2026}") { onCheckForUpdates() }
             Button("Clear Unsaved History\u{2026}") { isShowingClearConfirmation = true }
             Divider()
             Button("Settings\u{2026}") {

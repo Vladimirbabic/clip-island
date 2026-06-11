@@ -36,7 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store: environment.store,
             container: environment.container,
             syncStatus: environment.syncStatus,
-            pasteService: pasteService
+            pasteService: pasteService,
+            onCheckForUpdates: { [weak self] in
+                self?.checkForUpdatesFromToolbar()
+            }
         )
         self.monitor = monitor
         self.pasteService = pasteService
@@ -145,6 +148,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func statusItemImage() -> NSImage? {
+        if let appIcon = NSImage(named: "AppIcon") ?? NSApplication.shared.applicationIconImage,
+           appIcon.isValid,
+           let image = appIcon.copy() as? NSImage {
+            image.size = NSSize(width: 18, height: 18)
+            image.isTemplate = false
+            return image
+        }
+
         let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
         for symbolName in ["clipboard", "doc.on.clipboard", "doc.on.doc"] {
             if let image = NSImage(
@@ -267,6 +278,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkForUpdatesFromMenu(_ sender: Any?) {
         updaterController?.checkForUpdates(sender)
+    }
+
+    private func checkForUpdatesFromToolbar() {
+        updaterController?.checkForUpdates(nil)
     }
 }
 
