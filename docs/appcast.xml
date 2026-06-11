@@ -6,6 +6,24 @@
         <description>Release feed for ClipStory macOS updates.</description>
         <language>en</language>
         <item>
+            <title>1.0.7</title>
+            <pubDate>Thu, 11 Jun 2026 10:44:17 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>1.0.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.7/ClipStory-1.0.7.zip" length="4666081" type="application/octet-stream" sparkle:edSignature="q5V7L4SGKaEHVlCu2lFRPzNooLAgvvvCFN5j88n4Lq4BKLsTHZY26XmogmYtgtACiKy3Uz/hh9RUaQLdROEACQ=="/>
+        </item>
+        <item>
+            <title>1.0.6</title>
+            <pubDate>Thu, 11 Jun 2026 10:39:09 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.6/ClipStory-1.0.6.zip" length="4663561" type="application/octet-stream" sparkle:edSignature="0Dli4DBrlp9rih1/KU4OjSO3CiAUEc7kiHaTM9aZoh1van2GNKkHC9yRSeym2qkBI112qOCKhlee9ScIzMj9Ag=="/>
+        </item>
+        <item>
             <title>1.0.5</title>
             <pubDate>Thu, 11 Jun 2026 09:59:54 +0200</pubDate>
             <link>https://github.com/Vladimirbabic/clip-island</link>
@@ -13,24 +31,6 @@
             <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.5/ClipStory-1.0.5.zip" length="4667768" type="application/octet-stream" sparkle:edSignature="pIDoJMdoqrFHS34DXc8IL+G6cAWXPK6yZuCpWpqZW7/cJH/FbEABZeA00A245mh90rhOZbZN7rKg8FJfvK0hDw=="/>
-        </item>
-        <item>
-            <title>1.0.2</title>
-            <pubDate>Thu, 11 Jun 2026 07:30:18 +0200</pubDate>
-            <link>https://github.com/Vladimirbabic/clip-island</link>
-            <sparkle:version>3</sparkle:version>
-            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.2/ClipStory-1.0.2.zip" length="4654412" type="application/octet-stream" sparkle:edSignature="Zilj/sPa2850mSIH0S2W49f7JddNLPwq36K61OVn77qfSlp4jeYnoMcUlZ7zjDW+26QD9i3qa+h2NEWrhlJ/Dg=="/>
-        </item>
-        <item>
-            <title>1.0.1</title>
-            <pubDate>Thu, 11 Jun 2026 07:23:36 +0200</pubDate>
-            <link>https://github.com/Vladimirbabic/clip-island</link>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.1/ClipStory-1.0.1.zip" length="4652867" type="application/octet-stream" sparkle:edSignature="IhPbTYX5Hzy7WjnF3PESBuv2WPmjdj6iAJIfhjjj26/84iuim1yKwRdlqffoPzRt+1Mok5P+vr+Ok/Ek2fjSCQ=="/>
         </item>
     </channel>
 </rss>
