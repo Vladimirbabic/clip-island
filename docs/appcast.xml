@@ -6,6 +6,15 @@
         <description>Release feed for ClipStory macOS updates.</description>
         <language>en</language>
         <item>
+            <title>1.0.10</title>
+            <pubDate>Thu, 11 Jun 2026 11:40:40 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>1.0.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.10/ClipStory-1.0.10.zip" length="4716196" type="application/octet-stream" sparkle:edSignature="gGjZQT30GcN+adQjo7V8HaAb6GNlvS2jsc+h6W0KkkgQL7or6WwUgQfkosC+Q1sfc+578IUyGrdFnwtcRxDqAg=="/>
+        </item>
+        <item>
             <title>1.0.9</title>
             <pubDate>Thu, 11 Jun 2026 10:56:57 +0200</pubDate>
             <link>https://github.com/Vladimirbabic/clip-island</link>
@@ -22,15 +31,6 @@
             <sparkle:shortVersionString>1.0.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.8/ClipStory-1.0.8.zip" length="4669587" type="application/octet-stream" sparkle:edSignature="VynYgMt9sjAWUQ7VJ8Bkkxnlg+ZlU/r982Etu6N4uogmwoxD9VjugxhOu94FRLBQ9/91f59EzZXwrygjhSfSDQ=="/>
-        </item>
-        <item>
-            <title>1.0.7</title>
-            <pubDate>Thu, 11 Jun 2026 10:44:17 +0200</pubDate>
-            <link>https://github.com/Vladimirbabic/clip-island</link>
-            <sparkle:version>8</sparkle:version>
-            <sparkle:shortVersionString>1.0.7</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.7/ClipStory-1.0.7.zip" length="4666081" type="application/octet-stream" sparkle:edSignature="q5V7L4SGKaEHVlCu2lFRPzNooLAgvvvCFN5j88n4Lq4BKLsTHZY26XmogmYtgtACiKy3Uz/hh9RUaQLdROEACQ=="/>
         </item>
     </channel>
 </rss>
