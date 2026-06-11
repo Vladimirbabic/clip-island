@@ -14,8 +14,8 @@ settings:
     # Apple Developer team ID (Vladimir Babic — from the Apple Development cert in the keychain)
     DEVELOPMENT_TEAM: DY4JMWWW5S
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    CURRENT_PROJECT_VERSION: 5
-    MARKETING_VERSION: 1.0.4
+    CURRENT_PROJECT_VERSION: 6
+    MARKETING_VERSION: 1.0.5
 
 packages:
   Sparkle:
@@ -84,6 +84,11 @@ targets:
         CODE_SIGN_ENTITLEMENTS: iOS/ClipStory-iOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Development
+          PROVISIONING_PROFILE_SPECIFIER: ClipStory Share Extension
     dependencies:
       - target: ClipStoryShareExtension
         embed: true
@@ -118,6 +123,11 @@ targets:
         CODE_SIGN_ENTITLEMENTS: iOSShareExtension/ClipStoryShareExtension.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Development
+          PROVISIONING_PROFILE_SPECIFIER: Link between ios and macos clipstory app
 
   ClipStoryTests:
     type: bundle.unit-test

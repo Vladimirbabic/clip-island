@@ -21,7 +21,7 @@ new `/task` items unless the user explicitly asks to implement them now.
 - [ ] Verify pending iOS bottom fade tuning on device.
 - [ ] Verify pending iOS image-file preview support after a new image file copy syncs from Mac.
 - [ ] Verify iOS tap-to-copy and long-press "View Details" behavior.
-- [ ] Configure Apple Developer capabilities/profile for `com.vladbabic.clipstory.ios.ShareExtension`.
+- [x] Configure Apple Developer capabilities/profile for `com.vladbabic.clipstory.ios.ShareExtension`.
 - [ ] Improve iCloud sync freshness and visibility.
   - [x] Register for remote notifications on iOS.
   - [x] Add a visible "last updated/sync health" signal.

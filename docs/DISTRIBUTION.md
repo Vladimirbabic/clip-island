@@ -20,7 +20,7 @@ the App Store discovery/update/payment channel enough to absorb the constraints.
 - macOS bundle ID: `com.vladbabic.clipstory`
 - iOS bundle ID: `com.vladbabic.clipstory.ios`
 - iCloud container: `iCloud.com.vladbabic.clipstory`
-- Version: `1.0.4`, build `5`
+- Version: `1.0.5`, build `6`
 - Icons: shared AppIcon asset exists for macOS and iOS.
 - macOS Release hardened runtime is enabled for notarization.
 - Sparkle 2 is wired into the macOS app.
