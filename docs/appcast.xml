@@ -6,6 +6,15 @@
         <description>Release feed for ClipStory macOS updates.</description>
         <language>en</language>
         <item>
+            <title>1.0.1</title>
+            <pubDate>Thu, 11 Jun 2026 07:23:36 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.1/ClipStory-1.0.1.zip" length="4652867" type="application/octet-stream" sparkle:edSignature="IhPbTYX5Hzy7WjnF3PESBuv2WPmjdj6iAJIfhjjj26/84iuim1yKwRdlqffoPzRt+1Mok5P+vr+Ok/Ek2fjSCQ=="/>
+        </item>
+        <item>
             <title>1.0.0</title>
             <pubDate>Thu, 11 Jun 2026 00:31:46 +0200</pubDate>
             <link>https://github.com/Vladimirbabic/clip-island</link>
