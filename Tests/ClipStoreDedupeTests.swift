@@ -103,35 +103,114 @@ final class ClipStoreDedupeTests: XCTestCase {
         XCTAssertEqual(keeper.sourceAppName, "Safari")
         XCTAssertEqual(keeper.sourceAppBundleID, "com.apple.Safari")
         XCTAssertEqual(keeper.linkTitle, "Example Title")
+        // Inheriting a board also inherits the prune-protection flag.
+        XCTAssertTrue(keeper.isSavedToPage)
     }
 
     @MainActor
     func testKeeperKeepsOwnMetadataWhenAlreadySet() throws {
         let store = makeStore()
-        let keeperBoard = try XCTUnwrap(store.createPinboard(named: "Keeper Board"))
-        let duplicateBoard = try XCTUnwrap(store.createPinboard(named: "Duplicate Board"))
+        let sharedBoard = try XCTUnwrap(store.createPinboard(named: "Shared Board"))
         let keeper = insertItem(text: "keep-mine", createdAt: Date(timeIntervalSince1970: 2_000))
-        keeper.pinboard = keeperBoard
+        keeper.pinboard = sharedBoard
         keeper.sourceAppName = "Notes"
         keeper.sourceAppBundleID = "com.apple.Notes"
         keeper.linkTitle = "Keeper Title"
+        keeper.customTitle = "Keeper Custom"
+        keeper.recognizedText = "Keeper OCR"
         let duplicate = insertItem(text: "keep-mine", createdAt: Date(timeIntervalSince1970: 1_000))
-        duplicate.pinboard = duplicateBoard
+        duplicate.pinboard = sharedBoard
         duplicate.sourceAppName = "Safari"
         duplicate.sourceAppBundleID = "com.apple.Safari"
         duplicate.linkTitle = "Duplicate Title"
+        duplicate.customTitle = "Duplicate Custom"
+        duplicate.recognizedText = "Duplicate OCR"
         store.save()
 
         store.dedupeSweep()
 
         XCTAssertEqual(try fetchAll().count, 1)
         // Fill-if-nil only: existing keeper metadata is never overwritten.
-        XCTAssertEqual(keeper.pinboard?.dedupID, keeperBoard.dedupID)
+        XCTAssertEqual(keeper.pinboard?.dedupID, sharedBoard.dedupID)
         XCTAssertEqual(keeper.sourceAppName, "Notes")
         XCTAssertEqual(keeper.sourceAppBundleID, "com.apple.Notes")
         XCTAssertEqual(keeper.linkTitle, "Keeper Title")
+        XCTAssertEqual(keeper.customTitle, "Keeper Custom")
+        XCTAssertEqual(keeper.recognizedText, "Keeper OCR")
         // Neither item was pinned, so the keeper stays unpinned.
         XCTAssertFalse(keeper.isPinned)
+    }
+
+    @MainActor
+    func testKeeperInheritsCustomTitleAndRecognizedText() throws {
+        let store = makeStore()
+        let keeper = insertItem(text: "merge-extras", createdAt: Date(timeIntervalSince1970: 2_000))
+        let duplicate = insertItem(text: "merge-extras", createdAt: Date(timeIntervalSince1970: 1_000))
+        duplicate.customTitle = "Renamed on Mac"
+        duplicate.recognizedText = "OCR from Mac"
+        duplicate.imageData = Data([0xDE, 0xAD])
+        store.save()
+
+        store.dedupeSweep()
+
+        XCTAssertEqual(try fetchAll().count, 1)
+        XCTAssertEqual(keeper.customTitle, "Renamed on Mac")
+        XCTAssertEqual(keeper.recognizedText, "OCR from Mac")
+        XCTAssertEqual(keeper.imageData, Data([0xDE, 0xAD]))
+    }
+
+    // MARK: - Page-aware safety rules
+
+    @MainActor
+    func testDuplicatesOnDifferentBoardsAreBothKept() throws {
+        let store = makeStore()
+        let keeperBoard = try XCTUnwrap(store.createPinboard(named: "Keeper Board"))
+        let duplicateBoard = try XCTUnwrap(store.createPinboard(named: "Duplicate Board"))
+        let keeper = insertItem(text: "two-pages", createdAt: Date(timeIntervalSince1970: 2_000))
+        keeper.pinboard = keeperBoard
+        let duplicate = insertItem(text: "two-pages", createdAt: Date(timeIntervalSince1970: 1_000))
+        duplicate.pinboard = duplicateBoard
+        store.save()
+
+        store.dedupeSweep()
+
+        // Same content deliberately saved to two pages is two pieces of user
+        // intent, not a sync duplicate.
+        XCTAssertEqual(try fetchAll().count, 2)
+        XCTAssertEqual(keeper.pinboard?.dedupID, keeperBoard.dedupID)
+        XCTAssertEqual(duplicate.pinboard?.dedupID, duplicateBoard.dedupID)
+    }
+
+    @MainActor
+    func testDuplicateWithPendingBoardRelationshipIsDeferred() throws {
+        let store = makeStore()
+        let keeper = insertItem(text: "pending", createdAt: Date(timeIntervalSince1970: 2_000))
+        let duplicate = insertItem(text: "pending", createdAt: Date(timeIntervalSince1970: 1_000))
+        // Flag synced in, Pinboard record/relationship still in flight.
+        duplicate.isSavedToPage = true
+        store.save()
+
+        store.dedupeSweep()
+
+        // Deleting now would lose the page membership; a later sweep handles
+        // it once the relationship materializes.
+        XCTAssertEqual(try fetchAll().count, 2)
+        _ = keeper
+    }
+
+    @MainActor
+    func testSweepBackfillsFlagFromLinkedRelationship() throws {
+        let store = makeStore()
+        let board = try XCTUnwrap(store.createPinboard(named: "Backfill"))
+        // Simulates a record written by a build that predates the flag.
+        let item = insertItem(text: "legacy", createdAt: Date(timeIntervalSince1970: 1_000))
+        item.pinboard = board
+        XCTAssertFalse(item.isSavedToPage)
+        store.save()
+
+        store.dedupeSweep()
+
+        XCTAssertTrue(item.isSavedToPage)
     }
 
     // MARK: - Non-duplicates / idempotency

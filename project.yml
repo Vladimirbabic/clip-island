@@ -53,9 +53,11 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
       configs:
         Debug:
+          APS_ENVIRONMENT: development
           ICLOUD_CONTAINER_ENVIRONMENT: Development
         Release:
           ENABLE_HARDENED_RUNTIME: YES
+          APS_ENVIRONMENT: production
           ICLOUD_CONTAINER_ENVIRONMENT: Production
     dependencies:
       - package: Sparkle

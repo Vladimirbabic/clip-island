@@ -26,8 +26,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
     private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Exits the process when the schema-init flag is present.
+        CloudKitSchemaInitializer.runIfRequested()
+
         let environment = AppEnvironment.shared
         let arguments = ProcessInfo.processInfo.arguments
+
+        // Silent CloudKit pushes need an APNs registration on macOS even
+        // though NSPersistentCloudKitContainer manages its own subscriptions;
+        // without it, remote changes only import on app lifecycle events.
+        NSApp.registerForRemoteNotifications()
 
         let monitor = ClipboardMonitor(store: environment.store)
         let pasteService = PasteService(monitor: monitor)

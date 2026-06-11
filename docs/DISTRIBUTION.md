@@ -194,7 +194,12 @@ release:
   free Mac companion.
 - [ ] Create a small website/download page with support and privacy policy.
 - [ ] Create App Store Connect records for iOS.
-- [ ] Deploy CloudKit schema to production.
+- [ ] Deploy CloudKit schema to production: run a Debug build with
+      `--init-cloudkit-schema` (pushes the model to the Development schema),
+      then CloudKit Console → Deploy Schema Changes. REQUIRED again after ANY
+      `@Model` change, BEFORE shipping Release builds — Production never
+      auto-creates fields, and a missing field silently breaks every export
+      of that record type.
 - [ ] Create Developer ID certificate/profile for macOS CloudKit distribution.
 - [x] Add Sparkle 2 for direct-download macOS updates.
 - [x] Generate initial Sparkle signing key and commit only the public key.

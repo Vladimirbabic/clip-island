@@ -34,6 +34,12 @@ final class ClipItem {
     var linkTitle: String?
     /// Pinboard membership. Items on a pinboard are never pruned.
     var pinboard: Pinboard?
+    /// Denormalized page marker used by prune/clear. CloudKit can import a
+    /// clip before its Pinboard record (and the relationship link) arrives;
+    /// this scalar travels in the clip's own record, so page clips are never
+    /// mistaken for disposable history during that window. Maintained by
+    /// `ClipStore.assign`/`deletePinboard` and backfilled in `dedupeSweep`.
+    var isSavedToPage: Bool = false
 
     init(content: CapturedContent, createdAt: Date = Date()) {
         self.createdAt = createdAt

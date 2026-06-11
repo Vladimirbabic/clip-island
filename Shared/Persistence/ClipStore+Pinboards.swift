@@ -70,8 +70,12 @@ extension ClipStore {
         return true
     }
 
-    /// Deletes the board; its items return to plain history (nullify rule).
+    /// Deletes the board; its items return to plain history (nullify rule),
+    /// so their page marker must drop with the membership.
     func deletePinboard(_ board: Pinboard) {
+        for item in board.items ?? [] {
+            item.isSavedToPage = false
+        }
         context.delete(board)
         save()
     }
@@ -79,6 +83,7 @@ extension ClipStore {
     /// Moves an item onto a board (or back to history with nil).
     func assign(_ item: ClipItem, to board: Pinboard?) {
         item.pinboard = board
+        item.isSavedToPage = board != nil
         save()
     }
 }

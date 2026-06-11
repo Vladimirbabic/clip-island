@@ -57,6 +57,7 @@ final class ClipStore: ObservableObject {
             let item = ClipItem(content: content)
             item.isPinned = true
             item.pinboard = board
+            item.isSavedToPage = board != nil
             item.sourceAppName = content.sourceAppName ?? "ClipStory"
             item.sourceAppBundleID = content.sourceAppBundleID
             item.contentHash = "manual:\(item.dedupID.uuidString):\(content.contentHash)"
@@ -228,7 +229,9 @@ final class ClipStore: ObservableObject {
     }
 
     private func pruneOverflowUsingStorePredicate(to limit: Int) throws -> Bool {
-        let predicate = #Predicate<ClipItem> { !$0.isPinned && $0.pinboard == nil }
+        let predicate = #Predicate<ClipItem> {
+            !$0.isPinned && $0.pinboard == nil && !$0.isSavedToPage
+        }
         let overflow: [ClipItem]
         do {
             let count = try context.fetchCount(FetchDescriptor<ClipItem>(predicate: predicate))
@@ -260,11 +263,13 @@ final class ClipStore: ObservableObject {
     /// in-memory filter rather than failing the save.
     func fetchPrunable() throws -> [ClipItem] {
         do {
-            let predicate = #Predicate<ClipItem> { !$0.isPinned && $0.pinboard == nil }
+            let predicate = #Predicate<ClipItem> {
+                !$0.isPinned && $0.pinboard == nil && !$0.isSavedToPage
+            }
             return try context.fetch(FetchDescriptor<ClipItem>(predicate: predicate))
         } catch {
             let all = try context.fetch(FetchDescriptor<ClipItem>())
-            return all.filter { !$0.isPinned && $0.pinboard == nil }
+            return all.filter { !$0.isPinned && $0.pinboard == nil && !$0.isSavedToPage }
         }
     }
 
