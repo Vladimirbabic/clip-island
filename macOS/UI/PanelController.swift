@@ -86,7 +86,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// the exact notch/pill it bloomed from (even if the mouse moved screens).
     private var activeGeometry: NotchGeometry?
 
-    /// App and focused element that were active when the panel was last shown.
+    /// App that was active when the panel was last shown.
     private var pasteTarget: PasteService.PasteTarget?
     private var activeAppObserver: NSObjectProtocol?
     private var isHiding = false
@@ -269,7 +269,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         ) { [weak self] notification in
             let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             Task { @MainActor in
-                self?.rememberPasteTarget(app)
+                guard let self, !self.panel.isVisible, !self.isHiding else { return }
+                self.rememberPasteTarget(app)
             }
         }
     }

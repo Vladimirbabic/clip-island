@@ -11,7 +11,7 @@ final class PasteService {
     /// by `PanelController` before this delay starts.
     private static let pasteDelay: TimeInterval = 0.25
     private static let activationPollInterval: TimeInterval = 0.04
-    private static let maxActivationAttempts = 12
+    private static let maxActivationAttempts = 18
     private nonisolated static let vKeyCode: CGKeyCode = 9
 
     private let monitor: ClipboardMonitor
@@ -22,33 +22,10 @@ final class PasteService {
 
     struct PasteTarget {
         let app: NSRunningApplication
-        let focusedElement: AXUIElement?
 
         static func capture(app: NSRunningApplication?) -> PasteTarget? {
             guard let app, !app.isTerminated else { return nil }
-            return PasteTarget(
-                app: app,
-                focusedElement: axFocusedElement(matching: app.processIdentifier)
-            )
-        }
-
-        private static func axFocusedElement(matching pid: pid_t) -> AXUIElement? {
-            let systemElement = AXUIElementCreateSystemWide()
-            var value: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(
-                systemElement,
-                kAXFocusedUIElementAttribute as CFString,
-                &value
-            )
-            guard result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
-                return nil
-            }
-            let element = value as! AXUIElement
-            var elementPID: pid_t = 0
-            guard AXUIElementGetPid(element, &elementPID) == .success, elementPID == pid else {
-                return nil
-            }
-            return element
+            return PasteTarget(app: app)
         }
     }
 
@@ -86,9 +63,9 @@ final class PasteService {
         }
     }
 
-    /// Copies the item, re-activates the app/focused element that was active
-    /// before the panel opened, and synthesizes ⌘V. Without Accessibility
-    /// permission the item is only copied.
+    /// Copies the item, force re-activates the app that was active before the
+    /// panel opened, and synthesizes ⌘V. Without Accessibility permission the
+    /// item is only copied.
     func paste(item: ClipItem, into target: PasteTarget?) {
         copy(item: item)
         guard Self.isAccessibilityTrusted else { return }
@@ -98,33 +75,36 @@ final class PasteService {
             return
         }
 
-        target.app.activate()
+        activate(target.app)
         waitForActivation(of: target, attempt: 0)
     }
 
     private func waitForActivation(of target: PasteTarget, attempt: Int) {
         let app = target.app
         if isActivePasteTarget(app) || attempt >= Self.maxActivationAttempts {
-            restoreFocus(to: target)
             postCommandVAfterPasteDelay()
             return
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.activationPollInterval) { [weak self] in
             Task { @MainActor in
+                self?.activate(app)
                 self?.waitForActivation(of: target, attempt: attempt + 1)
             }
         }
     }
 
+    private func activate(_ app: NSRunningApplication) {
+        guard !app.isTerminated else { return }
+        app.unhide()
+        app.activate()
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(axApp, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    }
+
     private func isActivePasteTarget(_ app: NSRunningApplication) -> Bool {
         app.isActive
             || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-    }
-
-    private func restoreFocus(to target: PasteTarget) {
-        guard let focusedElement = target.focusedElement else { return }
-        AXUIElementSetAttributeValue(focusedElement, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     }
 
     private func postCommandVAfterPasteDelay() {
@@ -217,14 +197,14 @@ final class PasteService {
 
     private nonisolated static func postCommandV() {
         guard
-            let source = CGEventSource(stateID: .combinedSessionState),
+            let source = CGEventSource(stateID: .hidSystemState),
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
             let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
         else { return }
 
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
-        keyDown.post(tap: .cgAnnotatedSessionEventTap)
-        keyUp.post(tap: .cgAnnotatedSessionEventTap)
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
     }
 }
