@@ -55,11 +55,11 @@ enum AppIconProvider {
         if let cached = colorCache.object(forKey: key) { return cached }
         guard
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil,
-            let average = averageColor(of: icon(forBundleID: bundleID))
+            let dominant = dominantColor(of: icon(forBundleID: bundleID))
         else {
             return paletteColor(forSeed: fallbackSeed)
         }
-        let color = normalized(average)
+        let color = normalized(dominant)
         colorCache.setObject(color, forKey: key)
         return color
     }
@@ -75,10 +75,14 @@ enum AppIconProvider {
 
     // MARK: - Color math
 
-    /// Average color of an 8x8 downsampled render, alpha-weighted so the
-    /// transparent rounded corners of macOS app icons do not skew the result.
-    private static func averageColor(of image: NSImage) -> NSColor? {
-        let sample = 8
+    /// Signature color of a 16x16 downsampled render. Pixels vote into hue
+    /// buckets weighted by vividness (alpha × saturation × brightness), so a
+    /// multicolor icon yields its dominant hue instead of all hues averaging
+    /// into mud, and near-gray pixels (chrome, shadows, white plates) abstain.
+    /// Effectively monochrome icons return their gray so `normalized` can
+    /// keep them deliberately neutral.
+    private static func dominantColor(of image: NSImage) -> NSColor? {
+        let sample = 16
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: sample, pixelsHigh: sample,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -95,32 +99,74 @@ enum AppIconProvider {
         )
         context.flushGraphics()
 
-        var red = 0.0, green = 0.0, blue = 0.0, weight = 0.0
+        let buckets = 12
+        var bucketWeight = [Double](repeating: 0, count: buckets)
+        var hueSum = [Double](repeating: 0, count: buckets)
+        var saturationSum = [Double](repeating: 0, count: buckets)
+        var brightnessSum = [Double](repeating: 0, count: buckets)
+        var totalAlpha = 0.0, vividAlpha = 0.0
+        var grayBrightness = 0.0, grayAlpha = 0.0
+
         for x in 0..<sample {
             for y in 0..<sample {
                 guard let pixel = bitmap.colorAt(x: x, y: y) else { continue }
                 let alpha = Double(pixel.alphaComponent)
                 guard alpha > 0.1 else { continue }
-                red += Double(pixel.redComponent) * alpha
-                green += Double(pixel.greenComponent) * alpha
-                blue += Double(pixel.blueComponent) * alpha
-                weight += alpha
+                totalAlpha += alpha
+                var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, a: CGFloat = 0
+                pixel.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &a)
+                guard saturation >= 0.15, brightness >= 0.2 else {
+                    grayBrightness += Double(brightness) * alpha
+                    grayAlpha += alpha
+                    continue
+                }
+                vividAlpha += alpha
+                let vividness = alpha * Double(saturation) * Double(brightness)
+                let bucket = min(Int(Double(hue) * Double(buckets)), buckets - 1)
+                bucketWeight[bucket] += vividness
+                hueSum[bucket] += Double(hue) * vividness
+                saturationSum[bucket] += Double(saturation) * vividness
+                brightnessSum[bucket] += Double(brightness) * vividness
             }
         }
-        guard weight > 0 else { return nil }
+        guard totalAlpha > 0 else { return nil }
+
+        // Too little color to be the icon's identity (e.g. a tiny accent on
+        // an otherwise gray icon): report the gray instead.
+        if vividAlpha < totalAlpha * 0.04 {
+            guard grayAlpha > 0 else { return nil }
+            return NSColor(calibratedWhite: grayBrightness / grayAlpha, alpha: 1)
+        }
+
+        guard
+            let best = bucketWeight.indices.max(by: { bucketWeight[$0] < bucketWeight[$1] }),
+            bucketWeight[best] > 0
+        else { return nil }
+        let weight = bucketWeight[best]
         return NSColor(
-            calibratedRed: red / weight, green: green / weight, blue: blue / weight, alpha: 1
+            calibratedHue: hueSum[best] / weight,
+            saturation: saturationSum[best] / weight,
+            brightness: brightnessSum[best] / weight,
+            alpha: 1
         )
     }
 
-    /// Nudges a muddy average toward the saturated, mid-brightness range the
-    /// reference design uses, without changing the hue.
+    /// Pushes the dominant color into the rich, mid-brightness range the
+    /// reference design uses, without changing the hue. Genuinely gray icons
+    /// become a calm slate — never fake-saturated into mud.
     private static func normalized(_ color: NSColor) -> NSColor {
         guard let rgb = color.usingColorSpace(.deviceRGB) else { return color }
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
         rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        let boostedSaturation = saturation < 0.02 ? saturation : min(max(saturation, 0.45), 0.95)
-        let clampedBrightness = min(max(brightness, 0.40), 0.78)
+        if saturation < 0.12 {
+            return NSColor(calibratedHue: 0.61, saturation: 0.12, brightness: 0.42, alpha: 1)
+        }
+        let boostedSaturation = min(max(saturation * 1.4, 0.72), 0.92)
+        // Yellow reads as olive/khaki below ~0.75 brightness; everything else
+        // is richest in the upper-mid range.
+        let isYellowBand = (0.08...0.22).contains(hue)
+        let minimumBrightness: CGFloat = isYellowBand ? 0.75 : 0.52
+        let clampedBrightness = min(max(brightness, minimumBrightness), 0.80)
         return NSColor(
             calibratedHue: hue, saturation: boostedSaturation, brightness: clampedBrightness, alpha: 1
         )
