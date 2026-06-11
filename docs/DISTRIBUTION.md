@@ -20,7 +20,7 @@ the App Store discovery/update/payment channel enough to absorb the constraints.
 - macOS bundle ID: `com.vladbabic.clipstory`
 - iOS bundle ID: `com.vladbabic.clipstory.ios`
 - iCloud container: `iCloud.com.vladbabic.clipstory`
-- Version: `1.0.5`, build `6`
+- Version: `1.0.6`, build `7`
 - Icons: shared AppIcon asset exists for macOS and iOS.
 - macOS Release hardened runtime is enabled for notarization.
 - Sparkle 2 is wired into the macOS app.
@@ -146,6 +146,17 @@ June 2026, App Store Connect requires Xcode 26 or later for new uploads.
 iOS updates are handled by TestFlight during beta and App Store phased release
 for production. Use phased release for normal updates so a bad build can be
 paused before it reaches everyone.
+
+Current CLI path:
+
+```sh
+./scripts/build_testflight.sh
+```
+
+This archives the `ClipStory-iOS` scheme, exports with App Store Connect
+distribution signing, uploads symbols, and uploads the build to App Store
+Connect. Bump both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` before
+each TestFlight upload.
 
 ## CloudKit Production
 

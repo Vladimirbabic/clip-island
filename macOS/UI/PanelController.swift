@@ -39,16 +39,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     private static let panelHeight: CGFloat = 324
     private static let cornerRadiusFull: CGFloat = 24
     private static let cornerRadiusNotch: CGFloat = 10
-    private static let openDuration: CFTimeInterval = 0.42
+    private static let openDuration: CFTimeInterval = 0.34
     private static let closeDuration: CFTimeInterval = 0.22
-    private static let contentFadeInDuration: CFTimeInterval = 0.30
+    private static let contentFadeInDuration: CFTimeInterval = 0.24
     private static let contentFadeOutDuration: CFTimeInterval = 0.11
-    private static let contentEntranceOffset: CGFloat = 18
-    private static let openTiming = CAMediaTimingFunction(controlPoints: 0.16, 0.98, 0.18, 1.00)
+    private static let contentEntranceOffset: CGFloat = 12
+    private static let openTiming = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.20, 1.00)
     private static let closeTiming = CAMediaTimingFunction(controlPoints: 0.55, 0.00, 0.90, 0.60)
     private static let fadeTiming = CAMediaTimingFunction(controlPoints: 0.25, 0.85, 0.25, 1.00)
     private static let contentTiming = CAMediaTimingFunction(controlPoints: 0.16, 1.00, 0.30, 1.00)
-    private static let openingSettleTiming = CAMediaTimingFunction(controlPoints: 0.20, 0.92, 0.20, 1.00)
 
     private let panel: HistoryPanel
     private let store: ClipStore
@@ -71,7 +70,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// App that was frontmost when the panel was last shown; paste target.
     private var pasteTarget: NSRunningApplication?
     private var activeAppObserver: NSObjectProtocol?
-    private var rasterizationResetTask: DispatchWorkItem?
     private var isHiding = false
 
     init(
@@ -129,8 +127,11 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         let bloom = bloomRects(for: geometry)
         // Start collapsed inside the notch with the content hidden.
+        maskLayer.removeAllAnimations()
+        hostingView?.layer?.removeAllAnimations()
         applyMask(rect: bloom.notch, cornerRadius: Self.cornerRadiusNotch, animated: false)
         setContentVisible(false, animated: false)
+        prepareHiddenContentForPresentation()
 
         panel.makeKeyAndOrderFront(nil)
 
@@ -138,21 +139,22 @@ final class PanelController: NSObject, NSWindowDelegate {
             applyMask(rect: bloom.full, cornerRadius: Self.cornerRadiusFull, animated: false)
             setContentVisible(true, animated: true, duration: 0.16, delay: 0)
         } else {
-            setTransitionRasterizationEnabled(true, scale: geometry.screen.backingScaleFactor)
-            applyOpeningMask(
+            setTransitionRasterizationEnabled(false, scale: geometry.screen.backingScaleFactor)
+            applyMask(
                 rect: bloom.full,
                 cornerRadius: Self.cornerRadiusFull,
+                animated: true,
                 duration: Self.openDuration,
+                timing: Self.openTiming
             )
             setContentVisible(
                 true,
                 animated: true,
                 duration: Self.contentFadeInDuration,
-                delay: Self.openDuration * 0.18,
+                delay: Self.openDuration * 0.32,
                 timing: Self.contentTiming,
                 entrance: true
             )
-            scheduleRasterizationReset(after: Self.openDuration + Self.contentFadeInDuration + 0.08)
         }
 
         DispatchQueue.main.async {
@@ -170,7 +172,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
 
         let bloom = bloomRects(for: geometry)
-        setTransitionRasterizationEnabled(true, scale: geometry.screen.backingScaleFactor)
+        setTransitionRasterizationEnabled(false, scale: geometry.screen.backingScaleFactor)
         setContentVisible(false, animated: true, duration: 0.12, delay: 0)
         applyMask(
             rect: bloom.notch,
@@ -188,7 +190,6 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func hideImmediatelyForExternalUI() {
         guard panel.isVisible || isHiding else { return }
-        rasterizationResetTask?.cancel()
         maskLayer.removeAllAnimations()
         hostingView?.layer?.removeAllAnimations()
         containerView.layer?.removeAllAnimations()
@@ -297,6 +298,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         // Bottom corners are rounded; the top stays flush with the screen edge.
         maskLayer.backgroundColor = NSColor.black.cgColor
         maskLayer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        maskLayer.drawsAsynchronously = true
         maskLayer.allowsEdgeAntialiasing = true
         maskLayer.edgeAntialiasingMask = [
             .layerLeftEdge, .layerRightEdge, .layerBottomEdge, .layerTopEdge,
@@ -379,75 +381,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         CATransaction.commit()
     }
 
-    private func applyOpeningMask(
-        rect: CGRect,
-        cornerRadius: CGFloat,
-        duration: CFTimeInterval,
-        completion: (() -> Void)? = nil
-    ) {
-        let newBounds = CGRect(origin: .zero, size: rect.size)
-        let newPosition = CGPoint(x: rect.midX, y: rect.midY)
-        let overshootRect = openingOvershootRect(for: rect)
-        let overshootBounds = CGRect(origin: .zero, size: overshootRect.size)
-        let overshootPosition = CGPoint(x: overshootRect.midX, y: overshootRect.midY)
-        let overshootRadius = cornerRadius + 3
-
-        let presentation = maskLayer.presentation()
-        let oldBounds = presentation?.bounds ?? maskLayer.bounds
-        let oldPosition = presentation?.position ?? maskLayer.position
-        let oldRadius = presentation?.cornerRadius ?? maskLayer.cornerRadius
-
-        CATransaction.begin()
-        CATransaction.setCompletionBlock(completion)
-        CATransaction.setDisableActions(true)
-        maskLayer.bounds = newBounds
-        maskLayer.position = newPosition
-        maskLayer.cornerRadius = cornerRadius
-
-        let group = CAAnimationGroup()
-        group.animations = [
-            keyframeAnimation(
-                "bounds",
-                values: [
-                    NSValue(rect: oldBounds),
-                    NSValue(rect: overshootBounds),
-                    NSValue(rect: newBounds),
-                ],
-                timingFunctions: [Self.openTiming, Self.openingSettleTiming]
-            ),
-            keyframeAnimation(
-                "position",
-                values: [
-                    NSValue(point: oldPosition),
-                    NSValue(point: overshootPosition),
-                    NSValue(point: newPosition),
-                ],
-                timingFunctions: [Self.openTiming, Self.openingSettleTiming]
-            ),
-            keyframeAnimation(
-                "cornerRadius",
-                values: [oldRadius, overshootRadius, cornerRadius],
-                timingFunctions: [Self.openTiming, Self.openingSettleTiming]
-            ),
-        ]
-        group.duration = duration
-        maskLayer.add(group, forKey: "bloom")
-        CATransaction.commit()
-    }
-
-    private func openingOvershootRect(for rect: CGRect) -> CGRect {
-        let horizontal = min(max(rect.width * 0.004, 4), 8)
-        let vertical: CGFloat = 10
-        // Keep the top edge welded to the screen edge; only the bottom edge
-        // slightly overruns before settling back into the final rounded shape.
-        return CGRect(
-            x: rect.minX - horizontal,
-            y: rect.minY - vertical,
-            width: rect.width + horizontal * 2,
-            height: rect.height + vertical
-        )
-    }
-
     private func basicAnimation(
         _ keyPath: String,
         from: Any,
@@ -456,18 +389,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         let animation = CABasicAnimation(keyPath: keyPath)
         animation.fromValue = from
         animation.toValue = to
-        return animation
-    }
-
-    private func keyframeAnimation(
-        _ keyPath: String,
-        values: [Any],
-        timingFunctions: [CAMediaTimingFunction]
-    ) -> CAKeyframeAnimation {
-        let animation = CAKeyframeAnimation(keyPath: keyPath)
-        animation.values = values
-        animation.keyTimes = [0, 0.78, 1]
-        animation.timingFunctions = timingFunctions
         return animation
     }
 
@@ -511,20 +432,14 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         if entrance {
             var fromTransform = CATransform3DMakeTranslation(0, Self.contentEntranceOffset, 0)
-            fromTransform = CATransform3DScale(fromTransform, 0.986, 0.986, 1)
-            var settleTransform = CATransform3DMakeTranslation(0, -1.5, 0)
-            settleTransform = CATransform3DScale(settleTransform, 1.002, 1.002, 1)
-            let transform = CAKeyframeAnimation(keyPath: "transform")
-            transform.values = [
-                CATransform3DIsIdentity(startTransform) ? fromTransform : startTransform,
-                settleTransform,
-                targetTransform,
-            ]
-            transform.keyTimes = [0, 0.74, 1]
-            transform.timingFunctions = [Self.contentTiming, Self.openingSettleTiming]
+            fromTransform = CATransform3DScale(fromTransform, 0.992, 0.992, 1)
+            let transform = CABasicAnimation(keyPath: "transform")
+            transform.fromValue = CATransform3DIsIdentity(startTransform) ? fromTransform : startTransform
+            transform.toValue = targetTransform
             transform.duration = duration + 0.04
             transform.beginTime = CACurrentMediaTime() + delay
             transform.fillMode = .backwards
+            transform.timingFunction = timing
             layer.add(transform, forKey: "transform")
         } else if !visible {
             let transform = CABasicAnimation(keyPath: "transform")
@@ -544,8 +459,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
+    private func prepareHiddenContentForPresentation() {
+        hostingView?.layoutSubtreeIfNeeded()
+        containerView.displayIfNeeded()
+        hostingView?.displayIfNeeded()
+    }
+
     private func setTransitionRasterizationEnabled(_ enabled: Bool, scale: CGFloat) {
-        rasterizationResetTask?.cancel()
         let rasterizationScale = max(scale, 1)
         let layers = [containerView.layer, hostingView?.layer].compactMap { $0 }
         CATransaction.begin()
@@ -555,17 +475,6 @@ final class PanelController: NSObject, NSWindowDelegate {
             layer.rasterizationScale = rasterizationScale
         }
         CATransaction.commit()
-    }
-
-    private func scheduleRasterizationReset(after delay: CFTimeInterval) {
-        rasterizationResetTask?.cancel()
-        let task = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            let scale = self.activeGeometry?.screen.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-            self.setTransitionRasterizationEnabled(false, scale: scale)
-        }
-        rasterizationResetTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: task)
     }
 
     private func resolveGeometry() -> NotchGeometry? {
