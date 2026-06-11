@@ -27,7 +27,7 @@ enum CloudKitSchemaInitializer {
             fail("This build has no iCloud entitlement; sign it with the CloudKit-capable Debug profile first.")
         }
         guard let model = NSManagedObjectModel.makeManagedObjectModel(
-            for: [ClipItem.self, Pinboard.self, AppSettings.self]
+            for: ModelContainerFactory.modelTypes
         ) else {
             fail("Could not derive a managed object model from the SwiftData schema.")
         }

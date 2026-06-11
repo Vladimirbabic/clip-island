@@ -24,7 +24,13 @@ enum ModelContainerFactory {
     /// Must match the container in both targets' entitlements.
     static let cloudKitContainerID = "iCloud.com.vladbabic.clipstory"
 
-    static let schema = Schema([ClipItem.self, Pinboard.self, AppSettings.self])
+    /// Every synced model. The CloudKit schema initializer derives the
+    /// Development schema from this same list — keep them in lockstep.
+    static let modelTypes: [any PersistentModel.Type] = [
+        ClipItem.self, Pinboard.self, AppSettings.self, SourceAppBrand.self,
+    ]
+
+    static let schema = Schema(modelTypes)
 
     private static let logger = Logger(subsystem: "com.vladbabic.clipstory", category: "persistence")
 

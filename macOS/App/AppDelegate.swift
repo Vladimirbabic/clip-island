@@ -60,8 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         )
 
         monitor.onItemCaptured = { [weak self] item in
+            BrandSync.publish(
+                forBundleID: item.sourceAppBundleID,
+                appName: item.sourceAppName,
+                store: AppEnvironment.shared.store
+            )
             guard item.kind == .url else { return }
             self?.linkMetadataService?.fetchMetadata(for: item)
+        }
+
+        // Brands for apps captured before this launch (or before the brand
+        // feature existed) so iOS renders them with the same color/icon.
+        DispatchQueue.main.async {
+            BrandSync.backfill(store: environment.store)
         }
 
         // The mode check keeps demo data out of the real store if the

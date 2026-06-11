@@ -16,6 +16,8 @@ struct HistoryListView: View {
         SortDescriptor(\Pinboard.createdAt),
     ]) private var pinboards: [Pinboard]
 
+    @Query private var brandRecords: [SourceAppBrand]
+
     @State private var searchText = ""
     @State private var isSearchVisible = false
     @State private var selectedKindFilter: ClipKind?
@@ -61,6 +63,15 @@ struct HistoryListView: View {
 
     private var selectedBoard: Pinboard? {
         pinboards.first { $0.persistentModelID == selectedBoardID }
+    }
+
+    /// Mac-published app brands keyed by bundle ID; newest record wins when
+    /// sync briefly delivers duplicates.
+    private var brandsByBundleID: [String: SourceAppBrand] {
+        Dictionary(
+            brandRecords.map { ($0.bundleID, $0) },
+            uniquingKeysWith: { $0.updatedAt >= $1.updatedAt ? $0 : $1 }
+        )
     }
 
     /// History shows every clip. Pages are saved views, not folders that move
@@ -494,6 +505,7 @@ struct HistoryListView: View {
             } label: {
                 ClipGridCardView(
                     item: item,
+                    brand: brand(for: item),
                     isSelected: selectedItemIDs.contains(item.persistentModelID),
                     isRecentlyCopied: false
                 )
@@ -506,6 +518,7 @@ struct HistoryListView: View {
             } label: {
                 ClipGridCardView(
                     item: item,
+                    brand: brand(for: item),
                     isSelected: false,
                     isRecentlyCopied: recentlyCopiedItemID == item.persistentModelID
                 )
@@ -513,6 +526,11 @@ struct HistoryListView: View {
             .buttonStyle(.plain)
             .contextMenu { cardMenu(for: item) }
         }
+    }
+
+    private func brand(for item: ClipItem) -> SourceAppBrand? {
+        guard let bundleID = item.sourceAppBundleID else { return nil }
+        return brandsByBundleID[bundleID]
     }
 
     @ViewBuilder
@@ -1259,6 +1277,7 @@ private struct PinboardUnlockSheet: View {
 
 private struct ClipGridCardView: View {
     let item: ClipItem
+    let brand: SourceAppBrand?
     let isSelected: Bool
     let isRecentlyCopied: Bool
     private static let cardHeight: CGFloat = 196
@@ -1337,21 +1356,34 @@ private struct ClipGridCardView: View {
         .background(headerBackground)
     }
 
+    @ViewBuilder
     private var sourceBadge: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.white.opacity(0.92))
-            Image(systemName: sourceSymbolName)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(sourceSymbolColor)
+        // The Mac-published app icon, exactly as the macOS card shows it.
+        if let icon = BrandIconCache.icon(for: brand) {
+            Image(uiImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 26, height: 26)
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.white.opacity(0.92))
+                Image(systemName: sourceSymbolName)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(sourceSymbolColor)
+            }
+            .frame(width: 28, height: 28)
+            .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
         }
-        .frame(width: 28, height: 28)
-        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
     }
 
+    /// Matches the macOS card header: solid brand color fading 15% toward
+    /// black at the bottom.
     private var headerBackground: LinearGradient {
-        LinearGradient(
-            colors: [accentColor.opacity(0.72), accentColor.opacity(0.54)],
+        let base = accentColor
+        let bottom = base.blendedTowardBlack(fraction: 0.15)
+        return LinearGradient(
+            colors: [base, bottom],
             startPoint: .top,
             endPoint: .bottom
         )
@@ -1498,19 +1530,16 @@ private struct ClipGridCardView: View {
         }
     }
 
+    /// Same derivation as the macOS card: the Mac-published icon color for
+    /// the source app, else the shared fallback palette keyed by the same
+    /// seed — so a clip's header color is identical on both platforms.
     private var accentColor: Color {
-        if let board = item.pinboard {
-            return PinboardColor.color(named: board.colorName)
+        if let hex = brand?.colorHex, let rgb = AppBrandPalette.components(fromHex: hex) {
+            return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
         }
-        if item.isPinned {
-            return .orange
-        }
-        switch item.kind {
-        case .text: return Color(red: 0.78, green: 0.22, blue: 0.88)
-        case .url: return .indigo
-        case .image: return .green
-        case .file: return .gray
-        }
+        let seed = item.sourceAppBundleID ?? item.sourceAppName ?? item.kindRawValue
+        let fallback = AppBrandPalette.fallback[AppBrandPalette.fallbackIndex(forSeed: seed)]
+        return Color(red: fallback.red, green: fallback.green, blue: fallback.blue)
     }
 
     private var sourceSymbolName: String {
@@ -1532,5 +1561,32 @@ private struct ClipGridCardView: View {
         case "bubble.left.and.bubble.right.fill": return .purple
         default: return accentColor
         }
+    }
+}
+
+private extension Color {
+    /// SwiftUI port of NSColor.blended(withFraction:of: .black) used by the
+    /// macOS card header gradient.
+    func blendedTowardBlack(fraction: Double) -> Color {
+        let resolved = UIColor(self)
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return self }
+        let keep = 1 - fraction
+        return Color(red: Double(red) * keep, green: Double(green) * keep, blue: Double(blue) * keep)
+    }
+}
+
+/// Decoded brand icons, cached so grid scrolling never re-decodes PNG data.
+@MainActor
+private enum BrandIconCache {
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func icon(for brand: SourceAppBrand?) -> UIImage? {
+        guard let brand, let data = brand.iconPNG else { return nil }
+        let key = "\(brand.bundleID):\(brand.updatedAt.timeIntervalSinceReferenceDate)" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        guard let image = UIImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
     }
 }

@@ -12,17 +12,11 @@ enum AppIconProvider {
     private static let iconCache = NSCache<NSString, NSImage>()
     private static let colorCache = NSCache<NSString, NSColor>()
 
-    /// Paste-like saturated fallback palette.
-    private static let fallbackPalette: [NSColor] = [
-        NSColor(calibratedRed: 0.91, green: 0.12, blue: 0.81, alpha: 1), // magenta
-        NSColor(calibratedRed: 0.22, green: 0.48, blue: 0.96, alpha: 1), // blue
-        NSColor(calibratedRed: 0.61, green: 0.33, blue: 0.96, alpha: 1), // purple
-        NSColor(calibratedRed: 0.95, green: 0.55, blue: 0.15, alpha: 1), // orange
-        NSColor(calibratedRed: 0.13, green: 0.69, blue: 0.67, alpha: 1), // teal
-        NSColor(calibratedRed: 0.95, green: 0.33, blue: 0.55, alpha: 1), // pink
-        NSColor(calibratedRed: 0.42, green: 0.40, blue: 0.94, alpha: 1), // indigo
-        NSColor(calibratedRed: 0.91, green: 0.26, blue: 0.21, alpha: 1), // red
-    ]
+    /// Paste-like saturated fallback palette, shared with iOS so unknown
+    /// apps land on the same color on both platforms.
+    private static let fallbackPalette: [NSColor] = AppBrandPalette.fallback.map {
+        NSColor(calibratedRed: $0.red, green: $0.green, blue: $0.blue, alpha: 1)
+    }
 
     private static let genericIcon: NSImage = {
         let configuration = NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)
@@ -65,12 +59,44 @@ enum AppIconProvider {
     }
 
     static func paletteColor(forSeed seed: String) -> NSColor {
-        // FNV-1a: Swift's hashValue is randomized per process, unusable here.
-        var hash: UInt32 = 2_166_136_261
-        for byte in seed.utf8 {
-            hash = (hash ^ UInt32(byte)) &* 16_777_619
-        }
-        return fallbackPalette[Int(hash % UInt32(fallbackPalette.count))]
+        fallbackPalette[AppBrandPalette.fallbackIndex(forSeed: seed)]
+    }
+
+    /// RRGGBB encoding of `headerColor`, for publishing to SourceAppBrand.
+    static func headerColorHex(forBundleID bundleID: String?, fallbackSeed: String) -> String {
+        let color = headerColor(forBundleID: bundleID, fallbackSeed: fallbackSeed)
+        guard let rgb = color.usingColorSpace(.deviceRGB) else { return "" }
+        return AppBrandPalette.hex(
+            red: Double(rgb.redComponent),
+            green: Double(rgb.greenComponent),
+            blue: Double(rgb.blueComponent)
+        )
+    }
+
+    /// 64×64 PNG of the app icon, for publishing to SourceAppBrand. Nil when
+    /// the app cannot be resolved.
+    static func iconPNGData(forBundleID bundleID: String?) -> Data? {
+        guard
+            let bundleID, !bundleID.isEmpty,
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
+        else { return nil }
+        let side = 64
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        icon(forBundleID: bundleID).draw(
+            in: NSRect(x: 0, y: 0, width: side, height: side),
+            from: .zero, operation: .copy, fraction: 1
+        )
+        context.flushGraphics()
+        return bitmap.representation(using: .png, properties: [:])
     }
 
     // MARK: - Color math
