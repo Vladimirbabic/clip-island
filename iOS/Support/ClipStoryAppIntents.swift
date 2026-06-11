@@ -5,7 +5,7 @@ import UIKit
 @available(iOS 17.0, *)
 struct SaveClipStoryClipboardIntent: AppIntent {
     static var title: LocalizedStringResource = "Save Clipboard to ClipStory"
-    static var description = IntentDescription("Saves the current iPhone clipboard into ClipStory.")
+    static var description = IntentDescription("Saves the current clipboard into ClipStory.")
     static var openAppWhenRun = false
 
     @MainActor
