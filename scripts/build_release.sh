@@ -107,7 +107,7 @@ xcodebuild \
   -configuration Release \
   -archivePath "${ARCHIVE_PATH}" \
   -allowProvisioningUpdates \
-  "${XCODE_AUTH_ARGS[@]}" \
+  ${XCODE_AUTH_ARGS+"${XCODE_AUTH_ARGS[@]}"} \
   DEVELOPMENT_TEAM="${TEAM_ID}" \
   archive
 
@@ -117,7 +117,7 @@ xcodebuild \
   -exportPath "${EXPORT_DIR}" \
   -exportOptionsPlist "${EXPORT_OPTIONS}" \
   -allowProvisioningUpdates \
-  "${XCODE_AUTH_ARGS[@]}"
+  ${XCODE_AUTH_ARGS+"${XCODE_AUTH_ARGS[@]}"}
 
 APP_PATH="${EXPORT_DIR}/${APP_NAME}"
 [[ -d "${APP_PATH}" ]] || fail "Exported app not found at ${APP_PATH}."

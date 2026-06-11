@@ -6,6 +6,15 @@
         <description>Release feed for ClipStory macOS updates.</description>
         <language>en</language>
         <item>
+            <title>1.0.5</title>
+            <pubDate>Thu, 11 Jun 2026 09:59:54 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.5/ClipStory-1.0.5.zip" length="4667768" type="application/octet-stream" sparkle:edSignature="pIDoJMdoqrFHS34DXc8IL+G6cAWXPK6yZuCpWpqZW7/cJH/FbEABZeA00A245mh90rhOZbZN7rKg8FJfvK0hDw=="/>
+        </item>
+        <item>
             <title>1.0.2</title>
             <pubDate>Thu, 11 Jun 2026 07:30:18 +0200</pubDate>
             <link>https://github.com/Vladimirbabic/clip-island</link>
@@ -22,15 +31,6 @@
             <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.1/ClipStory-1.0.1.zip" length="4652867" type="application/octet-stream" sparkle:edSignature="IhPbTYX5Hzy7WjnF3PESBuv2WPmjdj6iAJIfhjjj26/84iuim1yKwRdlqffoPzRt+1Mok5P+vr+Ok/Ek2fjSCQ=="/>
-        </item>
-        <item>
-            <title>1.0.0</title>
-            <pubDate>Thu, 11 Jun 2026 00:31:46 +0200</pubDate>
-            <link>https://github.com/Vladimirbabic/clip-island</link>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.0/ClipStory-1.0.0.zip" length="4649709" type="application/octet-stream" sparkle:edSignature="GMKxL0ZDtUJ4LtpmL5jAerMfLa1Fo2E6MY1WdAltzGe/LBP/6xUu8lUzNi9ihMBEDldqiUqWcDd/HkPtEv6ZAg=="/>
         </item>
     </channel>
 </rss>
