@@ -21,7 +21,9 @@ final class LinkMetadataService {
     }
 
     func fetchMetadata(for item: ClipItem) {
-        guard item.kind == .url, item.linkTitle == nil else { return }
+        // Retry whenever the image is still missing — a clip that once got a
+        // title without an image picks the image up on the next copy.
+        guard item.kind == .url, item.linkTitle == nil || item.imageData == nil else { return }
         guard
             let urlText = item.text,
             let url = URL(string: urlText),
@@ -42,11 +44,44 @@ final class LinkMetadataService {
             if let imageProvider = metadata?.imageProvider {
                 imageData = await Self.pngData(from: imageProvider)
             }
+            // LinkPresentation often returns no image provider even when the
+            // page declares og:image — fetch it directly, then fall back to
+            // the site icon as a last resort.
+            if imageData == nil {
+                imageData = await Self.openGraphImageData(for: url)
+            }
+            if imageData == nil, let iconProvider = metadata?.iconProvider {
+                imageData = await Self.pngData(from: iconProvider)
+            }
             guard let self else { return }
             self.inFlight.remove(id)
-            guard let metadata, !item.isDeleted else { return }
-            self.store.updateLinkMetadata(for: item, title: metadata.title, imageData: imageData)
+            guard !item.isDeleted, metadata != nil || imageData != nil else { return }
+            self.store.updateLinkMetadata(for: item, title: metadata?.title, imageData: imageData)
         }
+    }
+
+    // MARK: - Direct og:image fetch
+
+    private static func openGraphImageData(for url: URL) async -> Data? {
+        var request = URLRequest(url: url, timeoutInterval: fetchTimeout)
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+            forHTTPHeaderField: "User-Agent"
+        )
+        guard
+            let (data, response) = try? await URLSession.shared.data(for: request),
+            (response as? HTTPURLResponse).map({ $0.statusCode < 400 }) ?? true
+        else { return nil }
+        let head = data.prefix(512 * 1024)
+        guard
+            let html = String(data: head, encoding: .utf8)
+                ?? String(data: head, encoding: .isoLatin1),
+            let imageURL = OpenGraphParser.imageURL(inHTML: html, baseURL: url),
+            let (imageData, imageResponse) = try? await URLSession.shared.data(from: imageURL),
+            (imageResponse as? HTTPURLResponse).map({ $0.statusCode < 400 }) ?? true,
+            let image = NSImage(data: imageData)
+        else { return nil }
+        return encodePNG(image, maxByteCount: AppConstants.maxImageByteCount)
     }
 
     // MARK: - Image extraction
