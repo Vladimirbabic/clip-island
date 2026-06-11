@@ -51,10 +51,17 @@ final class ClipStore: ObservableObject {
     /// Inserts user-created content that did not come from the system
     /// pasteboard. Manual items are saved content: they are pinned, can be
     /// assigned directly to a page, and are excluded from clear/prune.
+    /// A non-blank `title` becomes the clip's display name (customTitle).
     @discardableResult
-    func insertManual(_ content: CapturedContent, to board: Pinboard? = nil) -> ClipItem? {
+    func insertManual(
+        _ content: CapturedContent,
+        to board: Pinboard? = nil,
+        title: String? = nil
+    ) -> ClipItem? {
         do {
             let item = ClipItem(content: content)
+            let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            item.customTitle = trimmedTitle.isEmpty ? nil : trimmedTitle
             item.isPinned = true
             item.pinboard = board
             item.isSavedToPage = board != nil

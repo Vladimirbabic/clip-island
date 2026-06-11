@@ -178,8 +178,8 @@ struct HistoryListView: View {
                 SettingsSheet()
             }
             .sheet(isPresented: $isShowingManualNoteSheet) {
-                ManualNoteSheet { text in
-                    addManualNote(text)
+                ManualNoteSheet { title, text in
+                    addManualNote(title: title, text: text)
                 }
             }
             .sheet(isPresented: isLockSetupPresented) {
@@ -950,14 +950,14 @@ struct HistoryListView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    private func addManualNote(_ text: String) {
+    private func addManualNote(title: String, text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             showManualAddError("Write something before saving the note.")
             return
         }
         let content = CapturedContent(kind: .text, text: trimmed, sourceAppName: "ClipStory")
-        guard store.insertManual(content, to: selectedBoard) != nil else {
+        guard store.insertManual(content, to: selectedBoard, title: title) != nil else {
             showManualAddError("The note could not be saved.")
             return
         }
@@ -1141,31 +1141,40 @@ struct HistoryListView: View {
 
 private struct ManualNoteSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
     @State private var text = ""
-    let onSave: (String) -> Void
+    let onSave: (_ title: String, _ text: String) -> Void
 
     var body: some View {
         NavigationStack {
-            TextEditor(text: $text)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .background(Color.black)
-                .foregroundStyle(.white)
-                .padding()
-                .navigationTitle("New Note")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            onSave(text)
-                            dismiss()
-                        }
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
+            VStack(spacing: 0) {
+                TextField("Title (optional)", text: $title)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                Divider()
+                TextEditor(text: $text)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+            }
+            .background(Color.black)
+            .navigationTitle("New Note")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(title, text)
+                        dismiss()
+                    }
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
         .preferredColorScheme(.dark)
     }

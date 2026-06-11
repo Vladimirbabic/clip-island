@@ -92,6 +92,27 @@ final class ClipStorePruneTests: XCTestCase {
     }
 
     @MainActor
+    func testInsertManualAppliesTitle() throws {
+        let store = makeStore()
+
+        let named = try XCTUnwrap(
+            store.insertManual(CapturedContent(kind: .text, text: "body"), title: "Shopping List")
+        )
+        XCTAssertEqual(named.customTitle, "Shopping List")
+        XCTAssertEqual(named.preview, "Shopping List")
+
+        let blankTitle = try XCTUnwrap(
+            store.insertManual(CapturedContent(kind: .text, text: "other body"), title: "   ")
+        )
+        XCTAssertNil(blankTitle.customTitle)
+
+        let untitled = try XCTUnwrap(
+            store.insertManual(CapturedContent(kind: .text, text: "third body"))
+        )
+        XCTAssertNil(untitled.customTitle)
+    }
+
+    @MainActor
     func testInsertManualSetsFlagOnlyWhenBoardGiven() throws {
         let store = makeStore()
         let board = try XCTUnwrap(store.createPinboard(named: "Board"))

@@ -175,8 +175,8 @@ struct HistoryView: View {
             Text("Pinned clips and clips saved to pages are kept. This cannot be undone.")
         }
         .sheet(isPresented: $isShowingManualNoteSheet) {
-            ManualNoteSheet { text in
-                addManualNote(text)
+            ManualNoteSheet { title, text in
+                addManualNote(title: title, text: text)
             }
         }
         .sheet(isPresented: isLockSetupPresented) {
@@ -1005,7 +1005,7 @@ struct HistoryView: View {
         }
     }
 
-    private func addManualNote(_ text: String) {
+    private func addManualNote(title: String, text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             showManualAddError("Write something before saving the note.")
@@ -1017,7 +1017,7 @@ struct HistoryView: View {
             sourceAppName: "ClipStory",
             sourceAppBundleID: Bundle.main.bundleIdentifier
         )
-        guard store.insertManual(content, to: selectedBoard) != nil else {
+        guard store.insertManual(content, to: selectedBoard, title: title) != nil else {
             showManualAddError("The note could not be saved.")
             return
         }
@@ -1104,11 +1104,17 @@ struct HistoryView: View {
 
 private struct ManualNoteSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
     @State private var text = ""
-    let onSave: (String) -> Void
+    let onSave: (_ title: String, _ text: String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
+            TextField("Title (optional)", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .font(.headline)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
             TextEditor(text: $text)
                 .font(.body)
                 .frame(width: 440, height: 260)
@@ -1118,7 +1124,7 @@ private struct ManualNoteSheet: View {
                 Button("Cancel") { dismiss() }
                 Spacer()
                 Button("Save") {
-                    onSave(text)
+                    onSave(title, text)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

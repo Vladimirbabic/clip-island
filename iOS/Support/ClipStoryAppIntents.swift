@@ -31,6 +31,9 @@ struct CreateClipStoryNoteIntent: AppIntent {
     @Parameter(title: "Text")
     var text: String
 
+    @Parameter(title: "Title")
+    var title: String?
+
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -40,7 +43,7 @@ struct CreateClipStoryNoteIntent: AppIntent {
         let persistence = ModelContainerFactory.makeShared()
         let store = ClipStore(container: persistence.container)
         let content = CapturedContent(kind: .text, text: trimmed, sourceAppName: "Shortcuts")
-        guard store.insertManual(content) != nil else {
+        guard store.insertManual(content, title: title) != nil else {
             return .result(dialog: "Could not save the note.")
         }
         return .result(dialog: "Note saved to ClipStory.")
