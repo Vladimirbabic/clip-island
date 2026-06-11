@@ -20,7 +20,7 @@ the App Store discovery/update/payment channel enough to absorb the constraints.
 - macOS bundle ID: `com.vladbabic.clipstory`
 - iOS bundle ID: `com.vladbabic.clipstory.ios`
 - iCloud container: `iCloud.com.vladbabic.clipstory`
-- Version: `1.0.3`, build `4`
+- Version: `1.0.4`, build `5`
 - Icons: shared AppIcon asset exists for macOS and iOS.
 - macOS Release hardened runtime is enabled for notarization.
 - Sparkle 2 is wired into the macOS app.
@@ -40,6 +40,8 @@ Prerequisites in Apple Developer:
 3. Create a Developer ID provisioning profile for the app because CloudKit is an
    advanced capability.
 4. Install the certificate and profile in Xcode.
+5. Run `./scripts/build_release.sh`; it now preflights the expected Vladimir
+   Babic Developer ID certificate and notarization credentials before archiving.
 
 Build, package, notarize, and verify:
 
@@ -124,10 +126,13 @@ in the app so users are not stranded on old builds.
 
 1. Create the `ClipStory-iOS` app record in App Store Connect using
    `com.vladbabic.clipstory.ios`.
-2. Archive the `ClipStory-iOS` scheme with a Release configuration.
-3. Upload the archive to App Store Connect from Xcode Organizer.
-4. Start with internal TestFlight, then external TestFlight after beta review.
-5. Add App Store metadata before public review:
+2. Create the `com.vladbabic.clipstory.ios.ShareExtension` App ID and enable
+   CloudKit for the same `iCloud.com.vladbabic.clipstory` container.
+3. Create or refresh provisioning profiles for the iOS app and Share Extension.
+4. Archive the `ClipStory-iOS` scheme with a Release configuration.
+5. Upload the archive to App Store Connect from Xcode Organizer.
+6. Start with internal TestFlight, then external TestFlight after beta review.
+7. Add App Store metadata before public review:
    - Name, subtitle, keywords, category, age rating, screenshots.
    - Support URL and privacy policy URL.
    - App Privacy answers for clipboard data, iCloud storage, diagnostics, and

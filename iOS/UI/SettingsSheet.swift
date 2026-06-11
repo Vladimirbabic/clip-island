@@ -13,6 +13,7 @@ struct SettingsSheet: View {
     /// `store.setHistoryLimit` so the choice syncs across devices.
     @State private var selectedLimit = AppConstants.defaultHistoryLimit
     @State private var isShowingClearConfirmation = false
+    @State private var syncProbeMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -92,7 +93,33 @@ struct SettingsSheet: View {
             Label(syncStatus.statusText, systemImage: syncStatus.state.systemImageName)
                 .foregroundStyle(syncStatus.state.isSyncing ? Color.primary : Color.secondary)
             LabeledContent("Freshness", value: syncStatus.freshnessText)
+            LabeledContent("Test Clips", value: syncProbeMessage ?? store.syncProbeSummary())
+            Button {
+                createSyncProbe()
+            } label: {
+                Label("Create iPhone Sync Test Clip", systemImage: "waveform.path.ecg")
+            }
+            Button {
+                syncStatus.refresh()
+                syncProbeMessage = store.syncProbeSummary()
+            } label: {
+                Label("Refresh Sync Status", systemImage: "arrow.clockwise")
+            }
+            Button(role: .destructive) {
+                store.deleteSyncProbes()
+                syncProbeMessage = "Removed sync test clips."
+            } label: {
+                Label("Clean Sync Test Clips", systemImage: "trash")
+            }
         }
+    }
+
+    private func createSyncProbe() {
+        guard store.createSyncProbe(origin: "iPhone") != nil else {
+            syncProbeMessage = "Could not create a sync test clip."
+            return
+        }
+        syncProbeMessage = "Created an iPhone sync test clip. Open ClipStory on Mac and refresh."
     }
 
     private var achievementsSection: some View {

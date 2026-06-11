@@ -14,8 +14,8 @@ settings:
     # Apple Developer team ID (Vladimir Babic — from the Apple Development cert in the keychain)
     DEVELOPMENT_TEAM: DY4JMWWW5S
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    CURRENT_PROJECT_VERSION: 4
-    MARKETING_VERSION: 1.0.3
+    CURRENT_PROJECT_VERSION: 5
+    MARKETING_VERSION: 1.0.4
 
 packages:
   Sparkle:
@@ -84,6 +84,40 @@ targets:
         CODE_SIGN_ENTITLEMENTS: iOS/ClipStory-iOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - target: ClipStoryShareExtension
+        embed: true
+
+  ClipStoryShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: iOSShareExtension
+        excludes:
+          - "Info.plist"
+          - "*.entitlements"
+    info:
+      path: iOSShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: ClipStory
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 10
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vladbabic.clipstory.ios.ShareExtension
+        CODE_SIGN_ENTITLEMENTS: iOSShareExtension/ClipStoryShareExtension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
 
   ClipStoryTests:
     type: bundle.unit-test
@@ -111,5 +145,6 @@ schemes:
     build:
       targets:
         ClipStory-iOS: all
+        ClipStoryShareExtension: all
     run:
       config: Debug

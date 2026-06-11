@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var isAccessibilityTrusted = PasteService.isAccessibilityTrusted
     @State private var isShowingClearConfirmation = false
     @State private var selectedPane: SettingsPane = .general
+    @State private var syncProbeMessage: String?
     /// `ClipStore` does not publish changes; bump this after writes so
     /// captions that read store state (synced limit) refresh.
     @State private var settingsRevision = 0
@@ -296,7 +297,47 @@ struct SettingsView: View {
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(SettingsTheme.secondaryText)
             }
+
+            SettingsDivider()
+
+            ActionRow(
+                title: "Sync Test Clip",
+                subtitle: syncProbeMessage ?? syncProbeSubtitle,
+                systemImage: "waveform.path.ecg",
+                tint: .purple,
+                buttonTitle: "Create"
+            ) {
+                createSyncProbe()
+            }
+
+            SettingsDivider()
+
+            ActionRow(
+                title: "Clean Test Clips",
+                subtitle: "Remove ClipStory sync-check markers from history.",
+                systemImage: "trash.circle",
+                tint: .orange,
+                buttonTitle: "Clean"
+            ) {
+                store.deleteSyncProbes()
+                syncProbeMessage = "Removed sync test clips."
+                settingsRevision += 1
+            }
         }
+    }
+
+    private var syncProbeSubtitle: String {
+        _ = settingsRevision
+        return store.syncProbeSummary()
+    }
+
+    private func createSyncProbe() {
+        guard store.createSyncProbe(origin: "Mac") != nil else {
+            syncProbeMessage = "Could not create a sync test clip."
+            return
+        }
+        syncProbeMessage = "Created a Mac sync test clip. Open ClipStory on iPhone and refresh."
+        settingsRevision += 1
     }
 
     private var syncShortLabel: String {

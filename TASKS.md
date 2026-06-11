@@ -1,6 +1,6 @@
 # ClipStory Task List
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 This file is the source of truth for future work. If the user writes
 `/task <idea>`, append the idea to **Inbox** with today's date. Do not build
@@ -21,9 +21,11 @@ new `/task` items unless the user explicitly asks to implement them now.
 - [ ] Verify pending iOS bottom fade tuning on device.
 - [ ] Verify pending iOS image-file preview support after a new image file copy syncs from Mac.
 - [ ] Verify iOS tap-to-copy and long-press "View Details" behavior.
+- [ ] Configure Apple Developer capabilities/profile for `com.vladbabic.clipstory.ios.ShareExtension`.
 - [ ] Improve iCloud sync freshness and visibility.
   - [x] Register for remote notifications on iOS.
   - [x] Add a visible "last updated/sync health" signal.
+  - [x] Add Mac/iOS sync test clips in Settings for manual latency checks.
   - [ ] Test Mac -> iPhone and iPhone -> Mac latency with small text, image, and file-image clips.
 - [ ] Keep the macOS island animation smooth.
   - Validate the current easing changes by running the app, not just building it.
@@ -53,7 +55,7 @@ new `/task` items unless the user explicitly asks to implement them now.
   - [x] UI: iOS achievements screen, Mac Settings achievements section.
   - [x] Keep it productivity-focused; no loud popups during copy/paste.
 - [ ] iOS capture integrations.
-  - [ ] Share extension.
+  - [x] Share extension.
   - [ ] Action extension.
   - [x] Shortcuts actions for saving clipboard and creating notes.
   - [ ] Optional keyboard extension.
@@ -79,6 +81,8 @@ new `/task` items unless the user explicitly asks to implement them now.
   - [ ] Choose v1 launch channel and business model.
   - [ ] Deploy CloudKit schema to production.
   - [ ] Create Developer ID certificate/profile for CloudKit macOS distribution.
+  - [ ] Create iOS Share Extension App ID/profile with CloudKit access to `iCloud.com.vladbabic.clipstory`.
+  - [x] Add release preflight for Developer ID signing and notarization setup.
   - [x] Add Sparkle 2 for direct-download macOS updates.
   - [x] Generate initial Sparkle signing key and commit only the public key.
   - [x] Add initial appcast and appcast generation script.
