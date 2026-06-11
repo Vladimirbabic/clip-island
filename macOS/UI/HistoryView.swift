@@ -49,7 +49,7 @@ struct HistoryView: View {
     @FocusState private var isInlineUnlockFocused: Bool
 
     private static let topBarLeadingWidth: CGFloat = 118
-    private static let topBarTrailingWidth: CGFloat = 98
+    private static let topBarTrailingWidth: CGFloat = 132
     private static let cardPadding: CGFloat = 16
     private static let cardSpacing: CGFloat = 12
     private static let wheelStepThreshold: CGFloat = 42
@@ -234,7 +234,6 @@ struct HistoryView: View {
             .frame(width: Self.topBarLeadingWidth, alignment: .leading)
             HStack(spacing: 10) {
                 searchControl
-                filterControl
                 ScrollView(.horizontal, showsIndicators: false) {
                     PinboardTabStrip(
                         pinboards: pinboards,
@@ -249,6 +248,7 @@ struct HistoryView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             HStack(spacing: 8) {
+                filterControl
                 updateButton
                 addMenu
                 overflowMenu
