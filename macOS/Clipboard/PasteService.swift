@@ -9,7 +9,7 @@ final class PasteService {
     /// Focus-settling margin between re-activating the target app and posting
     /// the synthesized ⌘V. The panel has already been ordered out synchronously
     /// by `PanelController` before this delay starts.
-    private static let pasteDelay: TimeInterval = 0.15
+    private static let pasteDelay: TimeInterval = 0.25
     private static let activationPollInterval: TimeInterval = 0.04
     private static let maxActivationAttempts = 12
     private nonisolated static let vKeyCode: CGKeyCode = 9
@@ -23,37 +23,23 @@ final class PasteService {
     struct PasteTarget {
         let app: NSRunningApplication
         let focusedElement: AXUIElement?
-        let focusedWindow: AXUIElement?
 
         static func capture(app: NSRunningApplication?) -> PasteTarget? {
             guard let app, !app.isTerminated else { return nil }
-            let pid = app.processIdentifier
-            let appElement = AXUIElementCreateApplication(pid)
-            let systemElement = AXUIElementCreateSystemWide()
-            let focusedElement = Self.axElement(
-                for: kAXFocusedUIElementAttribute,
-                from: systemElement,
-                matching: pid
-            )
-            let focusedWindow = Self.axElement(
-                for: kAXFocusedWindowAttribute,
-                from: appElement,
-                matching: pid
-            )
             return PasteTarget(
                 app: app,
-                focusedElement: focusedElement,
-                focusedWindow: focusedWindow
+                focusedElement: axFocusedElement(matching: app.processIdentifier)
             )
         }
 
-        private static func axElement(
-            for attribute: String,
-            from source: AXUIElement,
-            matching pid: pid_t
-        ) -> AXUIElement? {
+        private static func axFocusedElement(matching pid: pid_t) -> AXUIElement? {
+            let systemElement = AXUIElementCreateSystemWide()
             var value: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(source, attribute as CFString, &value)
+            let result = AXUIElementCopyAttributeValue(
+                systemElement,
+                kAXFocusedUIElementAttribute as CFString,
+                &value
+            )
             guard result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
                 return nil
             }
@@ -137,22 +123,8 @@ final class PasteService {
     }
 
     private func restoreFocus(to target: PasteTarget) {
-        let appElement = AXUIElementCreateApplication(target.app.processIdentifier)
-
-        if let focusedWindow = target.focusedWindow {
-            AXUIElementPerformAction(focusedWindow, kAXRaiseAction as CFString)
-            AXUIElementSetAttributeValue(
-                appElement,
-                kAXFocusedWindowAttribute as CFString,
-                focusedWindow
-            )
-            AXUIElementSetAttributeValue(focusedWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
-            AXUIElementSetAttributeValue(focusedWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-        }
-
-        if let focusedElement = target.focusedElement {
-            AXUIElementSetAttributeValue(focusedElement, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-        }
+        guard let focusedElement = target.focusedElement else { return }
+        AXUIElementSetAttributeValue(focusedElement, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     }
 
     private func postCommandVAfterPasteDelay() {
