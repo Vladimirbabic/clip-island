@@ -55,7 +55,7 @@ struct ClipCardView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.kind.displayName)
+                Text(item.cardTitle)
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(Self.relativeFormatter.localizedString(for: item.createdAt, relativeTo: Date()))
@@ -93,8 +93,9 @@ struct ClipCardView: View {
     private var contentBody: some View {
         switch item.kind {
         case .text:
-            // Always the capped preview — never the raw (possibly huge) text.
-            Text(item.preview)
+            // Always the capped content summary — never the raw (possibly
+            // huge) text, and never the custom title (the header shows that).
+            Text(item.contentPreview)
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(8)
@@ -187,7 +188,7 @@ struct ClipCardView: View {
                 .overlay(Image(nsImage: thumbnail).resizable().scaledToFill())
                 .clipped()
                 .overlay(alignment: .bottomLeading) {
-                    Text(item.fileName ?? item.preview)
+                    Text(item.fileName ?? item.contentPreview)
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(2)
@@ -202,7 +203,7 @@ struct ClipCardView: View {
                 Image(systemName: item.kind.systemImageName)
                     .font(.system(size: 28, weight: .light))
                     .foregroundStyle(.white.opacity(0.55))
-                Text(item.fileName ?? item.preview)
+                Text(item.fileName ?? item.contentPreview)
                     .font(.system(size: 11.5))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(3)

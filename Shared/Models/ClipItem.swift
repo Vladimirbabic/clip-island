@@ -59,11 +59,27 @@ final class ClipItem {
         ClipKind(rawValue: kindRawValue) ?? .text
     }
 
-    /// Short human-readable summary for list rows and previews.
+    /// Short human-readable summary for list rows: the clip's name when
+    /// renamed, else a content summary.
     var preview: String {
-        if let customTitle, !customTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return customTitle
-        }
+        trimmedCustomTitle ?? contentPreview
+    }
+
+    /// The user-given name (rename / note title), nil when unset or blank.
+    var trimmedCustomTitle: String? {
+        guard let customTitle else { return nil }
+        let trimmed = customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Card header title: the clip's name when renamed, else the kind label.
+    var cardTitle: String {
+        trimmedCustomTitle ?? kind.displayName
+    }
+
+    /// Summary of the actual content — what pasting this clip produces. Never
+    /// the custom title: card bodies must always show real content.
+    var contentPreview: String {
         switch kind {
         case .text, .url:
             let value = text ?? ""

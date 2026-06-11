@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Query(sort: [SortDescriptor(\Pinboard.sortOrder), SortDescriptor(\Pinboard.createdAt)])
     private var pinboards: [Pinboard]
     @AppStorage(AppConstants.capturePausedKey) private var isCapturePaused = false
+    @AppStorage(AppConstants.copySoundEnabledKey) private var isCopySoundEnabled = true
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var loginItemStatus = LaunchAtLogin.status
     @State private var launchAtLoginError: String?
@@ -187,6 +188,19 @@ struct SettingsView: View {
                 tint: .orange
             ) {
                 Toggle("", isOn: $isCapturePaused)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+
+            SettingsDivider()
+
+            SettingsRow(
+                title: "Copy sound",
+                subtitle: "Play a sound when something is copied or captured.",
+                systemImage: "speaker.wave.2",
+                tint: .pink
+            ) {
+                Toggle("", isOn: $isCopySoundEnabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
             }

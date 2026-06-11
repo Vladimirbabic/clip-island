@@ -11,6 +11,10 @@ enum AppConstants {
     /// UserDefaults key (macOS) for whether the capture engine is paused.
     static let capturePausedKey = "capturePaused"
 
+    /// UserDefaults key (both platforms, per-device) for the copy sound.
+    /// Defaults to enabled when unset.
+    static let copySoundEnabledKey = "copySoundEnabled"
+
     /// Maximum image payload persisted, to keep CloudKit sync snappy. Larger
     /// images are downscaled/re-encoded by the capturing platform code.
     static let maxImageByteCount = 8 * 1024 * 1024

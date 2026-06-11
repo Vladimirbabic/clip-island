@@ -8,6 +8,7 @@ struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage(IOSSettingsKeys.autoImportClipboard) private var autoImportClipboard = false
+    @AppStorage(AppConstants.copySoundEnabledKey) private var isCopySoundEnabled = true
 
     /// Local mirror of the synced limit; writing goes through
     /// `store.setHistoryLimit` so the choice syncs across devices.
@@ -81,6 +82,7 @@ struct SettingsSheet: View {
     private var captureSection: some View {
         Section {
             Toggle("Auto-Import on Open", isOn: $autoImportClipboard)
+            Toggle("Copy Sound", isOn: $isCopySoundEnabled)
         } header: {
             Text("Capture")
         } footer: {

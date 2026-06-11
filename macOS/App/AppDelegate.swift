@@ -65,8 +65,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
                 appName: item.sourceAppName,
                 store: AppEnvironment.shared.store
             )
+            CopySound.play()
+            self?.animateStatusItemForCopy()
             guard item.kind == .url else { return }
             self?.linkMetadataService?.fetchMetadata(for: item)
+        }
+
+        // Copies made FROM ClipStory (panel copy, quick paste) also deserve
+        // the sound + menu-bar pulse; the monitor skips our own writes, so
+        // listen to the writer's marker notification instead.
+        NotificationCenter.default.addObserver(
+            forName: .clipStoryOwnPasteboardWrite, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                CopySound.play()
+                self?.animateStatusItemForCopy()
+            }
         }
 
         // Brands for apps captured before this launch (or before the brand
@@ -144,6 +158,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency SPUSta
         self.statusItem = statusItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.refreshStatusItemVisibility()
+        }
+    }
+
+    /// Brief menu-bar acknowledgment of a copy: the icon swaps to a checkmark
+    /// and pulses, then restores. A generation counter keeps rapid successive
+    /// copies from restoring mid-animation.
+    private var copyAnimationGeneration = 0
+
+    private func animateStatusItemForCopy() {
+        guard let button = statusItem?.button else { return }
+        copyAnimationGeneration += 1
+        let generation = copyAnimationGeneration
+
+        let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        if let check = NSImage(
+            systemSymbolName: "checkmark.circle.fill",
+            accessibilityDescription: "Copied"
+        )?.withSymbolConfiguration(configuration) {
+            check.isTemplate = true
+            button.image = check
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.1
+            button.animator().alphaValue = 0.35
+        } completionHandler: {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                button.animator().alphaValue = 1
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            guard let self, self.copyAnimationGeneration == generation,
+                  let button = self.statusItem?.button else { return }
+            button.alphaValue = 1
+            if let image = Self.statusItemImage() {
+                button.image = image
+            }
         }
     }
 

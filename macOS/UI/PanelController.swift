@@ -97,6 +97,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var keyboardCaptureObserver: NSObjectProtocol?
     private var keyboardCapturePaused = false
     private var isHiding = false
+    /// Global mouse-down monitor active while the panel is shown; a click in
+    /// any other app dismisses the island. Global monitors never see clicks
+    /// on our own windows, so the island (and our alerts) are exempt.
+    private var outsideClickMonitor: Any?
 
     init(
         store: ClipStore,
@@ -127,6 +131,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         if let keyboardCaptureObserver {
             NotificationCenter.default.removeObserver(keyboardCaptureObserver)
+        }
+        if let outsideClickMonitor {
+            NSEvent.removeMonitor(outsideClickMonitor)
         }
         keyboardEventTap.stop()
     }
@@ -168,6 +175,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.allowsKeyFocus = false
         panel.orderFrontRegardless()
         startKeyboardCapture()
+        startOutsideClickMonitor()
 
         if reduceMotion {
             applyMask(rect: bloom.full, cornerRadius: Self.cornerRadiusFull, animated: false)
@@ -199,6 +207,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     func hide() {
         guard panel.isVisible, !isHiding else { return }
         isHiding = true
+        // Stop swallowing keystrokes the moment the close starts: the
+        // typing-forwarding flow replays the dismissing keystroke into the
+        // focused app right after onClose(), and it must not be re-captured.
+        stopKeyboardCapture()
 
         guard !reduceMotion, let geometry = activeGeometry else {
             finishHide()
@@ -580,9 +592,32 @@ final class PanelController: NSObject, NSWindowDelegate {
         CGSize(width: geometry.screen.frame.width, height: Self.panelHeight)
     }
 
+    private func startOutsideClickMonitor() {
+        guard outsideClickMonitor == nil else { return }
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.panel.isVisible, !self.isHiding else { return }
+                // The panel sits above everything in its frame, so any click
+                // another app receives is by definition outside the island.
+                guard !self.panel.frame.contains(NSEvent.mouseLocation) else { return }
+                self.hide()
+            }
+        }
+    }
+
+    private func stopOutsideClickMonitor() {
+        if let outsideClickMonitor {
+            NSEvent.removeMonitor(outsideClickMonitor)
+        }
+        outsideClickMonitor = nil
+    }
+
     private func finishHide() {
         isHiding = false
         activeGeometry = nil
+        stopOutsideClickMonitor()
         stopKeyboardCapture()
         keyboardCapturePaused = false
         panel.allowsKeyFocus = false

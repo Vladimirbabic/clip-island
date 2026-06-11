@@ -1090,6 +1090,7 @@ struct HistoryListView: View {
     private func copyItem(_ item: ClipItem) {
         let success = ClipboardWriter.copy(item)
         if success {
+            CopySound.play()
             recentlyCopiedItemID = item.persistentModelID
             copiedItemDismissal?.cancel()
             copiedItemDismissal = Task {
@@ -1346,7 +1347,7 @@ private struct ClipGridCardView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.kind.displayName)
+                Text(item.cardTitle)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -1402,7 +1403,7 @@ private struct ClipGridCardView: View {
     private var preview: some View {
         switch item.kind {
         case .text:
-            Text(item.preview)
+            Text(item.contentPreview)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.88))
                 .lineLimit(6)
@@ -1452,7 +1453,7 @@ private struct ClipGridCardView: View {
             ZStack(alignment: .bottomLeading) {
                 thumbnailView(thumbnail)
 
-                Text(item.fileName ?? item.preview)
+                Text(item.fileName ?? item.contentPreview)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .lineLimit(2)
@@ -1466,7 +1467,7 @@ private struct ClipGridCardView: View {
                 Image(systemName: item.kind.systemImageName)
                     .font(.system(size: 34, weight: .light))
                     .foregroundStyle(.white.opacity(0.55))
-                Text(item.fileName ?? item.preview)
+                Text(item.fileName ?? item.contentPreview)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.78))
                     .lineLimit(3)

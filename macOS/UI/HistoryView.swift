@@ -259,37 +259,39 @@ struct HistoryView: View {
         .frame(height: 52)
     }
 
-    @ViewBuilder
+    /// Search rendered as the leftmost pseudo-tab, styled exactly like the
+    /// tab strip's pills. ⇧⇥ from Clipboard History activates it; while
+    /// active it shows the live query.
     private var searchControl: some View {
-        if isSearchExpanded {
+        Button {
+            if !isSearchExpanded { expandSearch(initialText: "") }
+        } label: {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.6))
-                Text(query.isEmpty ? "Search" : query)
-                    .font(.system(size: 13))
-                    .foregroundStyle(query.isEmpty ? .white.opacity(0.42) : .white)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: 170)
-                    .frame(width: 170, alignment: .leading)
+                    .font(.system(size: 11.5, weight: .medium))
+                if isSearchExpanded {
+                    Text(query.isEmpty ? "Search" : query)
+                        .foregroundStyle(query.isEmpty ? Color.white.opacity(0.42) : .white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: 150, alignment: .leading)
+                } else {
+                    Text("Search")
+                }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.white.opacity(0.1), in: Capsule())
-            .contentShape(Rectangle())
-            .onTapGesture { isSearchExpanded = true }
-        } else {
-            Button { expandSearch(initialText: "") } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 26, height: 26)
-                    .contentShape(Rectangle())
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(isSearchExpanded ? Color.white : Color.white.opacity(0.62))
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background {
+                if isSearchExpanded {
+                    Capsule().fill(Color.white.opacity(0.12))
+                }
             }
-            .buttonStyle(.plain)
-            .help("Search clips (or just start typing)")
+            .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
+        .help("Search clips (\u{21E7}\u{21E5} from Clipboard History)")
     }
 
     private var filterControl: some View {
@@ -813,12 +815,32 @@ struct HistoryView: View {
         case PanelKeyCode.delete, PanelKeyCode.forwardDelete:
             break
         default:
+            // Typing while browsing means the island is in the way: dismiss
+            // it and let the keystroke continue into the app that has focus.
+            // Search is explicit now — the Search pseudo-tab or ⇧⇥.
             if let characters = printableCharacters(from: event, flags: flags),
                !characters.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                expandSearch(initialText: characters)
+                onClose()
+                forwardTypingToFocusedApp(characters)
             }
         }
         return true
+    }
+
+    /// Replays a swallowed keystroke into the focused app. The panel never
+    /// takes key focus, so the target app still owns the cursor; `onClose()`
+    /// stops the event tap synchronously, so the replay is not re-captured.
+    private func forwardTypingToFocusedApp(_ characters: String) {
+        let utf16 = Array(characters.utf16)
+        guard
+            let source = CGEventSource(stateID: .combinedSessionState),
+            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+        else { return }
+        keyDown.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
+        keyUp.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
     }
 
     private func handleSearchEvent(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
@@ -926,13 +948,30 @@ struct HistoryView: View {
         return .ignored
     }
 
-    /// Cycles the selected tab (Clipboard History + each pinboard) with wrap.
+    /// Cycles Search → Clipboard History → each pinboard, with wrap. Search
+    /// is the leftmost pseudo-tab, so ⇧⇥ from Clipboard History lands on it
+    /// and ⇥ from Search returns to Clipboard History.
     private func switchTab(by delta: Int) -> KeyPress.Result {
-        let tabs: [PanelTab] = [.history] + pinboards.map { PanelTab.board($0.persistentModelID) }
-        guard tabs.count > 1 else { return .handled }
-        let current = tabs.firstIndex(of: selectedTab) ?? 0
-        let next = ((current + delta) % tabs.count + tabs.count) % tabs.count
-        selectedTab = tabs[next]
+        let boards = pinboards.map { PanelTab.board($0.persistentModelID) }
+        let slotCount = boards.count + 2
+        let current: Int
+        if isSearchExpanded {
+            current = 0
+        } else if selectedTab == .history {
+            current = 1
+        } else {
+            current = 2 + (boards.firstIndex(of: selectedTab) ?? 0)
+        }
+        let next = ((current + delta) % slotCount + slotCount) % slotCount
+        if next == 0 {
+            expandSearch(initialText: "")
+            return .handled
+        }
+        if isSearchExpanded {
+            query = ""
+            isSearchExpanded = false
+        }
+        selectedTab = next == 1 ? .history : boards[next - 2]
         isSearchFocused = false
         focusGrid()
         return .handled
@@ -943,8 +982,9 @@ struct HistoryView: View {
         .delete, .deleteForward, .home, .end, .pageUp, .pageDown, .clear,
     ]
 
-    /// Typing any printable character while browsing expands the search
-    /// field and seeds it with that character.
+    /// Typing any printable character while browsing dismisses the island so
+    /// the keystroke continues in the app that was focused (fallback path for
+    /// systems without the event tap).
     private func handleTyping(_ press: KeyPress) -> KeyPress.Result {
         guard !isSearchExpanded else { return .ignored }
         guard !press.modifiers.contains(.command), !press.modifiers.contains(.control) else {
@@ -957,7 +997,8 @@ struct HistoryView: View {
                 || (0xF700...0xF8FF).contains(scalar.value) // function-key range
         }
         guard isPrintable else { return .ignored }
-        expandSearch(initialText: press.characters)
+        onClose()
+        forwardTypingToFocusedApp(press.characters)
         return .handled
     }
 
