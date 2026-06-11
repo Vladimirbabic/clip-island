@@ -1,9 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel>
-    <title>ClipStory Updates</title>
-    <link>https://github.com/Vladimirbabic/clip-island/releases</link>
-    <description>Release feed for ClipStory macOS updates.</description>
-    <language>en</language>
-  </channel>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>ClipStory Updates</title>
+        <link>https://github.com/Vladimirbabic/clip-island/releases</link>
+        <description>Release feed for ClipStory macOS updates.</description>
+        <language>en</language>
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Thu, 11 Jun 2026 00:31:46 +0200</pubDate>
+            <link>https://github.com/Vladimirbabic/clip-island</link>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Vladimirbabic/clip-island/releases/download/v1.0.0/ClipStory-1.0.0.zip" length="4704374" type="application/octet-stream" sparkle:edSignature="Ilhtz5xqRiF4f8fpVumfQWC/x8uq66Ym8Ab0j0PsGO6blRTFNd/GITKyjhoLi4PveQGk4sntxvpB1l5cDq9oCQ=="/>
+        </item>
+    </channel>
 </rss>

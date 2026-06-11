@@ -6,8 +6,9 @@ ARCHIVES_DIR="${1:-${ROOT_DIR}/build/sparkle}"
 APPCAST_PATH="${APPCAST_PATH:-${ROOT_DIR}/docs/appcast.xml}"
 SPARKLE_ACCOUNT="${SPARKLE_ACCOUNT:-com.vladbabic.clipstory}"
 RELEASE_TAG="${RELEASE_TAG:-v$(awk -F': ' '/MARKETING_VERSION:/ { gsub(/"/, "", $2); print $2; exit }' "${ROOT_DIR}/project.yml")}"
-DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/Vladimirbabic/clip-island/releases/download/${RELEASE_TAG}}"
+DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/Vladimirbabic/clip-island/releases/download/${RELEASE_TAG}/}"
 PRODUCT_URL="${PRODUCT_URL:-https://github.com/Vladimirbabic/clip-island}"
+SPARKLE_ED_KEY_FILE="${SPARKLE_ED_KEY_FILE:-}"
 
 find_sparkle_tool() {
   local name="$1"
@@ -36,11 +37,17 @@ if [[ ! -d "${ARCHIVES_DIR}" ]]; then
   exit 1
 fi
 
-"${GENERATE_APPCAST}" \
-  --account "${SPARKLE_ACCOUNT}" \
-  --download-url-prefix "${DOWNLOAD_URL_PREFIX}" \
-  --link "${PRODUCT_URL}" \
-  -o "${APPCAST_PATH}" \
-  "${ARCHIVES_DIR}"
+ARGS=(
+  --account "${SPARKLE_ACCOUNT}"
+  --download-url-prefix "${DOWNLOAD_URL_PREFIX}"
+  --link "${PRODUCT_URL}"
+  -o "${APPCAST_PATH}"
+)
+
+if [[ -n "${SPARKLE_ED_KEY_FILE}" ]]; then
+  ARGS+=(--ed-key-file "${SPARKLE_ED_KEY_FILE}")
+fi
+
+"${GENERATE_APPCAST}" "${ARGS[@]}" "${ARCHIVES_DIR}"
 
 echo "Generated ${APPCAST_PATH}"
