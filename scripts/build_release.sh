@@ -5,8 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEAM_ID="${TEAM_ID:-DY4JMWWW5S}"
 EXPECTED_SIGNER_NAME="${EXPECTED_SIGNER_NAME:-Vladimir Babic}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-clipstory-notary}"
+NOTARY_APPLE_ID="${NOTARY_APPLE_ID:-}"
+NOTARY_PASSWORD="${NOTARY_PASSWORD:-}"
 REPO="${GITHUB_REPOSITORY:-Vladimirbabic/clip-island}"
 PUBLISH_GITHUB_RELEASE="${PUBLISH_GITHUB_RELEASE:-1}"
+SPARKLE_ED_KEY_FILE="${SPARKLE_ED_KEY_FILE:-}"
 
 VERSION="$(awk -F': ' '/MARKETING_VERSION:/ { gsub(/"/, "", $2); print $2; exit }' "${ROOT_DIR}/project.yml")"
 BUILD_NUMBER="$(awk -F': ' '/CURRENT_PROJECT_VERSION:/ { gsub(/"/, "", $2); print $2; exit }' "${ROOT_DIR}/project.yml")"
@@ -87,24 +90,38 @@ codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 
 ditto -c -k --keepParent "${APP_PATH}" "${NOTARY_ZIP}"
 
-if ! xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1; then
-  fail "Created ${NOTARY_ZIP}, but missing notary profile '${NOTARY_PROFILE}'. Create it with xcrun notarytool store-credentials, then re-run this script."
+NOTARY_ARGS=()
+if xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1; then
+  NOTARY_ARGS=(--keychain-profile "${NOTARY_PROFILE}")
+elif [[ -n "${NOTARY_APPLE_ID}" ]]; then
+  if [[ -z "${NOTARY_PASSWORD}" ]]; then
+    printf "App-specific password for %s: " "${NOTARY_APPLE_ID}" >&2
+    IFS= read -rs NOTARY_PASSWORD
+    printf "\n" >&2
+  fi
+  NOTARY_ARGS=(--apple-id "${NOTARY_APPLE_ID}" --team-id "${TEAM_ID}" --password "${NOTARY_PASSWORD}")
+else
+  fail "Created ${NOTARY_ZIP}, but missing notary profile '${NOTARY_PROFILE}'. Set NOTARY_APPLE_ID to use a secure password prompt, or create the keychain profile."
 fi
 
-xcrun notarytool submit "${NOTARY_ZIP}" --keychain-profile "${NOTARY_PROFILE}" --wait
+xcrun notarytool submit "${NOTARY_ZIP}" "${NOTARY_ARGS[@]}" --wait
 xcrun stapler staple "${APP_PATH}"
 spctl --assess --type execute --verbose "${APP_PATH}"
 
 ditto -c -k --keepParent "${APP_PATH}" "${FINAL_ZIP}"
 cp "${FINAL_ZIP}" "${SPARKLE_DIR}/"
 
-RELEASE_TAG="${RELEASE_TAG}" "${ROOT_DIR}/scripts/generate_appcast.sh" "${SPARKLE_DIR}"
+if [[ -z "${SPARKLE_ED_KEY_FILE}" && -f "${ROOT_DIR}/build/sparkle_private_key.ed25519" ]]; then
+  SPARKLE_ED_KEY_FILE="${ROOT_DIR}/build/sparkle_private_key.ed25519"
+fi
+
+SPARKLE_ED_KEY_FILE="${SPARKLE_ED_KEY_FILE}" RELEASE_TAG="${RELEASE_TAG}" "${ROOT_DIR}/scripts/generate_appcast.sh" "${SPARKLE_DIR}"
 
 if [[ "${PUBLISH_GITHUB_RELEASE}" == "1" ]]; then
   if gh release view "${RELEASE_TAG}" --repo "${REPO}" >/dev/null 2>&1; then
-    gh release upload "${RELEASE_TAG}" "${FINAL_ZIP}" --repo "${REPO}" --clobber
+    gh release upload "${RELEASE_TAG}" "${FINAL_ZIP}" "${ROOT_DIR}/docs/appcast.xml" --repo "${REPO}" --clobber
   else
-    gh release create "${RELEASE_TAG}" "${FINAL_ZIP}" \
+    gh release create "${RELEASE_TAG}" "${FINAL_ZIP}" "${ROOT_DIR}/docs/appcast.xml" \
       --repo "${REPO}" \
       --target "$(git rev-parse HEAD)" \
       --title "ClipStory ${VERSION}" \

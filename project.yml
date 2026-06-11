@@ -41,7 +41,7 @@ targets:
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
-        SUFeedURL: https://vladimirbabic.github.io/clip-island/appcast.xml
+        SUFeedURL: https://github.com/Vladimirbabic/clip-island/releases/latest/download/appcast.xml
         SUPublicEDKey: yD/iIqArwB8D0y+r2fl0MUoGkF6NY5sGmm4UqllEbLk=
         SUEnableInstallerLauncherService: true
     settings:

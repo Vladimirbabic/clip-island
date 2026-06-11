@@ -73,7 +73,7 @@ new `/task` items unless the user explicitly asks to implement them now.
   - [ ] Implement roles, invites, audit behavior, and shared storage.
 - [ ] Distribution work.
   - [ ] TestFlight setup for iOS.
-  - [ ] macOS notarization.
+  - [x] macOS notarization.
   - [x] Release build workflow.
   - [x] Privacy copy and onboarding notes.
   - [ ] Choose v1 launch channel and business model.
@@ -82,10 +82,11 @@ new `/task` items unless the user explicitly asks to implement them now.
   - [x] Add Sparkle 2 for direct-download macOS updates.
   - [x] Generate initial Sparkle signing key and commit only the public key.
   - [x] Add initial appcast and appcast generation script.
-  - [ ] Enable GitHub Pages or custom-domain hosting for the appcast URL.
+  - [x] Publish appcast as a GitHub Release asset for the private repo.
+  - [ ] Move appcast to public hosting before public distribution if the repo stays private.
   - [ ] Export/back up the Sparkle private key into secure secret storage.
-  - [ ] Publish release DMG/ZIP assets through GitHub Releases.
-  - [ ] Decide ZIP vs DMG for the first public artifact.
+  - [x] Publish release ZIP asset through GitHub Releases.
+  - [x] Decide ZIP vs DMG for the first public artifact.
   - [ ] Create support URL, privacy policy URL, and landing/download page.
   - [ ] Prepare App Store Connect metadata and screenshots.
 
