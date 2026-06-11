@@ -169,4 +169,48 @@ final class PinboardTests: XCTestCase {
         store.setPinboardColor(board, colorName: valid)
         XCTAssertEqual(board.colorName, valid)
     }
+
+    // MARK: - Locking
+
+    @MainActor
+    func testLockPinboardStoresSaltedHashAndVerifiesPassword() throws {
+        let store = makeStore()
+        let board = try XCTUnwrap(store.createPinboard(named: "Secrets"))
+
+        XCTAssertTrue(store.lockPinboard(board, password: "env-keys"))
+
+        XCTAssertTrue(board.isLocked)
+        XCTAssertFalse(board.lockSalt.isEmpty)
+        XCTAssertFalse(board.lockHash.isEmpty)
+        XCTAssertNotEqual(board.lockHash, "env-keys")
+        XCTAssertTrue(store.unlockPinboard(board, password: "env-keys"))
+        XCTAssertFalse(store.unlockPinboard(board, password: "wrong"))
+    }
+
+    @MainActor
+    func testLockPinboardRejectsShortPassword() throws {
+        let store = makeStore()
+        let board = try XCTUnwrap(store.createPinboard(named: "Secrets"))
+
+        XCTAssertFalse(store.lockPinboard(board, password: "123"))
+
+        XCTAssertFalse(board.isLocked)
+        XCTAssertTrue(board.lockSalt.isEmpty)
+        XCTAssertTrue(board.lockHash.isEmpty)
+    }
+
+    @MainActor
+    func testRemovePinboardLockRequiresPassword() throws {
+        let store = makeStore()
+        let board = try XCTUnwrap(store.createPinboard(named: "Secrets"))
+        XCTAssertTrue(store.lockPinboard(board, password: "env-keys"))
+
+        XCTAssertFalse(store.removePinboardLock(board, password: "wrong"))
+        XCTAssertTrue(board.isLocked)
+
+        XCTAssertTrue(store.removePinboardLock(board, password: "env-keys"))
+        XCTAssertFalse(board.isLocked)
+        XCTAssertTrue(board.lockSalt.isEmpty)
+        XCTAssertTrue(board.lockHash.isEmpty)
+    }
 }

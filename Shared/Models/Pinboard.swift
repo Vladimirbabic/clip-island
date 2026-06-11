@@ -11,6 +11,8 @@ final class Pinboard {
     var iconName: String = "square.grid.2x2"
     var sortOrder: Int = 0
     var createdAt: Date = Date()
+    var lockSalt: String = ""
+    var lockHash: String = ""
     /// Deterministic tie-breaker for cross-device ordering and merges.
     var dedupID: UUID = UUID()
 
@@ -31,5 +33,9 @@ final class Pinboard {
 
     var displayName: String {
         name.isEmpty ? "Untitled" : name
+    }
+
+    var isLocked: Bool {
+        !lockSalt.isEmpty && !lockHash.isEmpty
     }
 }

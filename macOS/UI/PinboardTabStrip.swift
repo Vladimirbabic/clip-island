@@ -38,6 +38,11 @@ enum PinboardPalette {
 struct PinboardTabStrip: View {
     let pinboards: [Pinboard]
     @Binding var selection: PanelTab
+    let unlockedBoardIDs: Set<PersistentIdentifier>
+    let onLockRequest: (Pinboard) -> Void
+    let onUnlockRequest: (Pinboard) -> Void
+    let onRemoveLockRequest: (Pinboard) -> Void
+    let onLockNow: (Pinboard) -> Void
 
     @EnvironmentObject private var store: ClipStore
     @State private var renamingBoardID: PersistentIdentifier?
@@ -94,6 +99,11 @@ struct PinboardTabStrip: View {
                     Image(systemName: board.iconName)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(PinboardPalette.color(for: board.colorName))
+                    if board.isLocked {
+                        Image(systemName: unlockedBoardIDs.contains(id) ? "lock.open.fill" : "lock.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
                     Text(board.displayName)
                 }
             }
@@ -129,8 +139,24 @@ struct PinboardTabStrip: View {
                     }
                 }
                 Divider()
+                lockMenuItems(for: board)
+                Divider()
                 Button("Delete Page\u{2026}", role: .destructive) { boardPendingDelete = board }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func lockMenuItems(for board: Pinboard) -> some View {
+        if board.isLocked {
+            if unlockedBoardIDs.contains(board.persistentModelID) {
+                Button("Lock Page Now") { onLockNow(board) }
+            } else {
+                Button("Unlock Page\u{2026}") { onUnlockRequest(board) }
+            }
+            Button("Remove Lock\u{2026}") { onRemoveLockRequest(board) }
+        } else {
+            Button("Lock Page\u{2026}") { onLockRequest(board) }
         }
     }
 

@@ -47,7 +47,7 @@ struct AddToPinboardMenu: View {
             if isCurrent {
                 Label(board.displayName, systemImage: "checkmark")
             } else {
-                Label(board.displayName, systemImage: board.iconName)
+                Label(board.displayName, systemImage: board.isLocked ? "lock.fill" : board.iconName)
             }
         }
         .disabled(isCurrent)

@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct HistoryListView: View {
     @EnvironmentObject private var store: ClipStore
     @EnvironmentObject private var syncStatus: CloudSyncStatus
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \ClipItem.createdAt, order: .reverse) private var items: [ClipItem]
     @Query(sort: [
         SortDescriptor(\Pinboard.sortOrder),
@@ -27,6 +28,10 @@ struct HistoryListView: View {
     @State private var isShowingSettings = false
     @State private var isShowingManualNoteSheet = false
     @State private var isShowingFileImporter = false
+    @State private var lockSetupBoard: Pinboard?
+    @State private var unlockBoard: Pinboard?
+    @State private var removeLockBoard: Pinboard?
+    @State private var unlockedBoardIDs = Set<PersistentIdentifier>()
     @State private var manualAddErrorMessage = ""
     @State private var isShowingManualAddError = false
     @State private var isSelecting = false
@@ -55,9 +60,15 @@ struct HistoryListView: View {
     /// clips out of the main history.
     private var scopedItems: [ClipItem] {
         guard let board = selectedBoard else {
-            return items
+            return items.filter { !isHiddenByLockedBoard($0) }
         }
+        guard !selectedBoardRequiresUnlock else { return [] }
         return items.filter { $0.pinboard?.persistentModelID == board.persistentModelID }
+    }
+
+    private func isHiddenByLockedBoard(_ item: ClipItem) -> Bool {
+        guard let board = item.pinboard, board.isLocked else { return false }
+        return !unlockedBoardIDs.contains(board.persistentModelID)
     }
 
     private var filteredItems: [ClipItem] {
@@ -85,6 +96,11 @@ struct HistoryListView: View {
 
     private var filteredItemIDs: [PersistentIdentifier] {
         filteredItems.map(\.persistentModelID)
+    }
+
+    private var selectedBoardRequiresUnlock: Bool {
+        guard let board = selectedBoard else { return false }
+        return board.isLocked && !unlockedBoardIDs.contains(board.persistentModelID)
     }
 
     var body: some View {
@@ -148,6 +164,48 @@ struct HistoryListView: View {
                     addManualNote(text)
                 }
             }
+            .sheet(isPresented: isLockSetupPresented) {
+                if let lockSetupBoard {
+                    PinboardLockSetupSheet(boardName: lockSetupBoard.displayName) { password in
+                        if store.lockPinboard(lockSetupBoard, password: password) {
+                            unlockedBoardIDs.insert(lockSetupBoard.persistentModelID)
+                        }
+                        self.lockSetupBoard = nil
+                    }
+                }
+            }
+            .sheet(isPresented: isUnlockPresented) {
+                if let unlockBoard {
+                    PinboardUnlockSheet(
+                        boardName: unlockBoard.displayName,
+                        title: "Unlock Page",
+                        actionTitle: "Unlock"
+                    ) { password in
+                        let didUnlock = store.unlockPinboard(unlockBoard, password: password)
+                        if didUnlock {
+                            unlockedBoardIDs.insert(unlockBoard.persistentModelID)
+                            self.unlockBoard = nil
+                        }
+                        return didUnlock
+                    }
+                }
+            }
+            .sheet(isPresented: isRemoveLockPresented) {
+                if let removeLockBoard {
+                    PinboardUnlockSheet(
+                        boardName: removeLockBoard.displayName,
+                        title: "Remove Page Lock",
+                        actionTitle: "Remove Lock"
+                    ) { password in
+                        let didRemove = store.removePinboardLock(removeLockBoard, password: password)
+                        if didRemove {
+                            unlockedBoardIDs.remove(removeLockBoard.persistentModelID)
+                            self.removeLockBoard = nil
+                        }
+                        return didRemove
+                    }
+                }
+            }
             .fileImporter(
                 isPresented: $isShowingFileImporter,
                 allowedContentTypes: [.item],
@@ -170,6 +228,11 @@ struct HistoryListView: View {
                 if ids.isEmpty {
                     selectedItemIDs.removeAll()
                 }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase != .active else { return }
+                unlockedBoardIDs.removeAll()
+                detailPath.removeAll()
             }
         }
     }
@@ -351,7 +414,9 @@ struct HistoryListView: View {
 
     @ViewBuilder
     private var content: some View {
-        if filteredItems.isEmpty {
+        if selectedBoardRequiresUnlock {
+            lockedState
+        } else if filteredItems.isEmpty {
             emptyState
         } else {
             ScrollView {
@@ -366,6 +431,34 @@ struct HistoryListView: View {
             }
             .scrollIndicators(.hidden)
         }
+    }
+
+    private var lockedState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(.white.opacity(0.36))
+            Text("\(selectedBoard?.displayName ?? "Page") is locked")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.88))
+                .multilineTextAlignment(.center)
+            Button {
+                if let selectedBoard {
+                    unlockBoard = selectedBoard
+                }
+            } label: {
+                Text("Unlock Page")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .frame(height: 44)
+                    .background(Color.white.opacity(0.10), in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.bottom, 90)
     }
 
     @ViewBuilder
@@ -541,6 +634,7 @@ struct HistoryListView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Add")
+        .disabled(selectedBoardRequiresUnlock)
     }
 
     private var pagePicker: some View {
@@ -552,9 +646,14 @@ struct HistoryListView: View {
             }
             ForEach(pinboards) { board in
                 Button {
-                    selectedBoardID = board.persistentModelID
+                    selectBoard(board)
                 } label: {
-                    Label(board.displayName, systemImage: selectedBoardID == board.persistentModelID ? "checkmark" : board.iconName)
+                    Label(
+                        board.displayName,
+                        systemImage: selectedBoardID == board.persistentModelID
+                            ? "checkmark"
+                            : (board.isLocked ? "lock.fill" : board.iconName)
+                    )
                 }
             }
             Divider()
@@ -583,6 +682,32 @@ struct HistoryListView: View {
                         }
                     }
                 }
+                if selectedBoard.isLocked {
+                    if selectedBoardRequiresUnlock {
+                        Button {
+                            unlockBoard = selectedBoard
+                        } label: {
+                            Label("Unlock Page...", systemImage: "lock.open")
+                        }
+                    } else {
+                        Button {
+                            unlockedBoardIDs.remove(selectedBoard.persistentModelID)
+                        } label: {
+                            Label("Lock Page Now", systemImage: "lock")
+                        }
+                    }
+                    Button {
+                        removeLockBoard = selectedBoard
+                    } label: {
+                        Label("Remove Lock...", systemImage: "lock.slash")
+                    }
+                } else {
+                    Button {
+                        lockSetupBoard = selectedBoard
+                    } label: {
+                        Label("Lock Page...", systemImage: "lock")
+                    }
+                }
                 Divider()
             }
             Button {
@@ -596,6 +721,11 @@ struct HistoryListView: View {
                 Image(systemName: selectedBoard?.iconName ?? "clock.arrow.circlepath")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(selectedBoard.map { PinboardColor.color(named: $0.colorName) } ?? Color(red: 0.78, green: 0.22, blue: 0.88))
+                if selectedBoard?.isLocked == true {
+                    Image(systemName: selectedBoardRequiresUnlock ? "lock.fill" : "lock.open.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
                 Text(selectedBoard?.displayName ?? "Clipboard History")
                     .font(.headline.weight(.semibold))
                     .lineLimit(1)
@@ -655,6 +785,27 @@ struct HistoryListView: View {
         )
     }
 
+    private var isLockSetupPresented: Binding<Bool> {
+        Binding(
+            get: { lockSetupBoard != nil },
+            set: { if !$0 { lockSetupBoard = nil } }
+        )
+    }
+
+    private var isUnlockPresented: Binding<Bool> {
+        Binding(
+            get: { unlockBoard != nil },
+            set: { if !$0 { unlockBoard = nil } }
+        )
+    }
+
+    private var isRemoveLockPresented: Binding<Bool> {
+        Binding(
+            get: { removeLockBoard != nil },
+            set: { if !$0 { removeLockBoard = nil } }
+        )
+    }
+
     private var kindFilterBinding: Binding<String?> {
         Binding(
             get: { selectedKindFilter?.rawValue },
@@ -669,6 +820,13 @@ struct HistoryListView: View {
         savedOnlyFilter = false
         pinnedOnlyFilter = false
         recognizedTextOnlyFilter = false
+    }
+
+    private func selectBoard(_ board: Pinboard) {
+        selectedBoardID = board.persistentModelID
+        if board.isLocked && !unlockedBoardIDs.contains(board.persistentModelID) {
+            unlockBoard = board
+        }
     }
 
     private func toggleSelection(for item: ClipItem) {
@@ -867,6 +1025,110 @@ private struct ManualNoteSheet: View {
                 }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+private struct PinboardLockSetupSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var errorText = ""
+
+    let boardName: String
+    let onSave: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("Password", text: $password)
+                    SecureField("Confirm Password", text: $confirmation)
+                } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Unlocking is required before this page shows clips.")
+                        if !errorText.isEmpty {
+                            Text(errorText)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Lock \(boardName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lock") { save() }
+                        .disabled(password.count < PinboardLocking.minimumPasswordLength || confirmation.isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func save() {
+        guard password == confirmation else {
+            errorText = "Passwords do not match."
+            return
+        }
+        guard password.count >= PinboardLocking.minimumPasswordLength else {
+            errorText = "Use at least \(PinboardLocking.minimumPasswordLength) characters."
+            return
+        }
+        onSave(password)
+        dismiss()
+    }
+}
+
+private struct PinboardUnlockSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var errorText = ""
+
+    let boardName: String
+    let title: String
+    let actionTitle: String
+    let onSubmit: (String) -> Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("Password", text: $password)
+                        .onSubmit { submit() }
+                } header: {
+                    Text(boardName)
+                } footer: {
+                    if !errorText.isEmpty {
+                        Text(errorText)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(actionTitle) { submit() }
+                        .disabled(password.isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func submit() {
+        if onSubmit(password) {
+            dismiss()
+        } else {
+            errorText = "Wrong password."
+            password = ""
+        }
     }
 }
 

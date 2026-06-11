@@ -47,6 +47,29 @@ extension ClipStore {
         save()
     }
 
+    @discardableResult
+    func lockPinboard(_ board: Pinboard, password: String) -> Bool {
+        guard password.count >= PinboardLocking.minimumPasswordLength else { return false }
+        let credentials = PinboardLocking.makeCredentials(password: password)
+        board.lockSalt = credentials.salt
+        board.lockHash = credentials.hash
+        save()
+        return true
+    }
+
+    func unlockPinboard(_ board: Pinboard, password: String) -> Bool {
+        PinboardLocking.verify(password: password, salt: board.lockSalt, expectedHash: board.lockHash)
+    }
+
+    @discardableResult
+    func removePinboardLock(_ board: Pinboard, password: String) -> Bool {
+        guard unlockPinboard(board, password: password) else { return false }
+        board.lockSalt = ""
+        board.lockHash = ""
+        save()
+        return true
+    }
+
     /// Deletes the board; its items return to plain history (nullify rule).
     func deletePinboard(_ board: Pinboard) {
         context.delete(board)
