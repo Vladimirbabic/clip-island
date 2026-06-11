@@ -14,8 +14,8 @@ settings:
     # Apple Developer team ID (Vladimir Babic — from the Apple Development cert in the keychain)
     DEVELOPMENT_TEAM: DY4JMWWW5S
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    CURRENT_PROJECT_VERSION: 7
-    MARKETING_VERSION: 1.0.6
+    CURRENT_PROJECT_VERSION: 8
+    MARKETING_VERSION: 1.0.7
 
 packages:
   Sparkle:

@@ -124,7 +124,11 @@ struct HistoryView: View {
         .background(quickPasteShortcuts)
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: searchFilters) { _, _ in selectedIndex = 0 }
-        .onChange(of: selectedTab) { _, _ in selectedIndex = 0 }
+        .onChange(of: selectedTab) { _, _ in
+            selectedIndex = 0
+            isSearchFocused = false
+            focusGrid()
+        }
         .onChange(of: visibleItemIDs) { _, _ in clampSelection() }
         .onChange(of: pinboardIDs) { _, _ in validateSelectedTab() }
         .onAppear { focusGrid() }
@@ -310,13 +314,27 @@ struct HistoryView: View {
     /// Hidden buttons so ⌘1…⌘9 paste the Nth visible card even while the
     /// search field has focus (keyboard shortcuts resolve window-wide).
     private var quickPasteShortcuts: some View {
-        ForEach(1...9, id: \.self) { number in
-            Button("") { if visibleItems.indices.contains(number - 1) { onPaste(visibleItems[number - 1]) } }
-                .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
+        Group {
+            Button("") { _ = pasteSelected() }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(visibleItems.isEmpty)
+            ForEach(1...9, id: \.self) { number in
+                Button("") { if visibleItems.indices.contains(number - 1) { onPaste(visibleItems[number - 1]) } }
+                    .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
+            }
         }
         .opacity(0)
         .frame(width: 0, height: 0)
+        .disabled(!canUseGlobalPasteShortcuts)
         .accessibilityHidden(true)
+    }
+
+    private var canUseGlobalPasteShortcuts: Bool {
+        !isShowingClearConfirmation
+            && !isShowingManualNoteSheet
+            && !isShowingManualAddError
+            && renamingItem == nil
+            && editingTextItem == nil
     }
 
     private var addMenu: some View {
@@ -427,10 +445,12 @@ struct HistoryView: View {
         .id(item.persistentModelID)
         .onTapGesture(count: 2) {
             selectedIndex = index
+            focusGrid()
             onPaste(item)
         }
         .onTapGesture {
             selectedIndex = index
+            focusGrid()
         }
         .contextMenu { contextMenu(for: item) }
     }
@@ -557,7 +577,13 @@ struct HistoryView: View {
     }
 
     private func focusGrid() {
-        DispatchQueue.main.async { isGridFocused = true }
+        DispatchQueue.main.async {
+            isSearchFocused = false
+            isGridFocused = false
+            DispatchQueue.main.async {
+                isGridFocused = true
+            }
+        }
     }
 
     private func handleEscape() -> KeyPress.Result {
@@ -603,6 +629,8 @@ struct HistoryView: View {
         let current = tabs.firstIndex(of: selectedTab) ?? 0
         let next = ((current + delta) % tabs.count + tabs.count) % tabs.count
         selectedTab = tabs[next]
+        isSearchFocused = false
+        focusGrid()
         return .handled
     }
 
