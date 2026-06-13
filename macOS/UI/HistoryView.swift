@@ -472,6 +472,8 @@ struct HistoryView: View {
         Group {
             if selectedBoardRequiresUnlock {
                 lockedState
+            } else if isSearchExpanded && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                emptyState
             } else if visibleItems.isEmpty {
                 emptyState
             } else {
@@ -624,6 +626,9 @@ struct HistoryView: View {
     }
 
     private var emptyContent: (symbol: String, title: String, hint: String) {
+        if isSearchExpanded && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ("magnifyingglass", "Search clips", "Text, links, files, screenshots, and saved Pages.")
+        }
         if !query.isEmpty {
             return ("magnifyingglass", "No clips match \u{201C}\(query)\u{201D}", "Try a different search.")
         }
